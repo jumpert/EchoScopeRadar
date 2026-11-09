@@ -338,6 +338,8 @@ class Radar:
         )
         async with self.controls:
             current = self.jobs[key]
+            if current.job.relevant_only:
+                observations = tuple(item for item in observations if item.matches)
             snapshot = replace(
                 current,
                 checkpoint=batch.checkpoint,
@@ -506,6 +508,7 @@ class Radar:
                         )
                     )
                     and (not query.matches_only or bool(item.observation.matches))
+                    and (query.kind is None or item.observation.message.kind == query.kind)
                     and (query.since is None or item.observation.message.captured_at >= query.since)
                     and (query.until is None or item.observation.message.captured_at <= query.until)
                     and (query.before is None or item.id > query.before)

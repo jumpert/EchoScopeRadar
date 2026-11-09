@@ -1,0 +1,31 @@
+version: 1
+sources:
+  - id: telenoche
+    type: syndication
+    label: Telenoche · Nacionales
+    params: {url: 'https://www.telenoche.com.uy/rss/pages/nacionales.xml', kind: NEWS_ARTICLE}
+  - id: subrayado
+    type: syndication
+    label: Subrayado · Nacional
+    params: {url: 'https://www.subrayado.com.uy/rss/pages/nacional.xml', kind: NEWS_ARTICLE}
+  - id: montevideo-portal
+    type: syndication
+    label: Montevideo Portal · Noticias
+    params: {url: 'https://www.montevideo.com.uy/anxml.aspx?59', kind: NEWS_ARTICLE}
+  - id: el-observador
+    type: syndication
+    label: El Observador · Nacional
+    params: {url: 'https://www.elobservador.com.uy/rss/pages/nacional.xml', kind: NEWS_ARTICLE}
+jobs:
+  - {id: telenoche, source: telenoche, interval_s: 900, rule_set: defensa, relevant_only: true}
+  - {id: subrayado, source: subrayado, interval_s: 900, rule_set: defensa, relevant_only: true}
+  - {id: montevideo-portal, source: montevideo-portal, interval_s: 900, rule_set: defensa, relevant_only: true}
+  - {id: el-observador, source: el-observador, interval_s: 900, rule_set: defensa, relevant_only: true}
+rule_sets:
+  defensa:
+    - {id: mdn, phrase: Ministerio de Defensa, severity: important}
+    - {id: ejercito-nacional, phrase: Ejército Nacional, severity: important}
+    - {id: ejercito, phrase: Ejército}
+    - {id: fuerzas-armadas, phrase: Fuerzas Armadas}
+    - {id: esmade, phrase: Estado Mayor de la Defensa}
+    - {id: ministra, phrase: Sandra Lazo}

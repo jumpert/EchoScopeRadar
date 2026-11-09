@@ -12,6 +12,7 @@ class Kind(StrEnum):
     REVIEW = "REVIEW"
     LIVE_CHAT = "LIVE_CHAT"
     FEED_ENTRY = "FEED_ENTRY"
+    NEWS_ARTICLE = "NEWS_ARTICLE"
 
 
 class State(StrEnum):
@@ -88,6 +89,7 @@ class HistoryQuery:
     before: int | None = None
     after: int | None = None
     matches_only: bool = False
+    kind: Kind | None = None
 
 
 @dataclass(frozen=True, slots=True)

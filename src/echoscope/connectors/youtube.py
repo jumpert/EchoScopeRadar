@@ -29,6 +29,22 @@ class YouTubeParams(StrictModel):
     video_id: str = Field(pattern=r"^[A-Za-z0-9_-]{11}$")
 
 
+def youtube_headers(credential):
+    token = credential.resolve() if credential else None
+    if (
+        not token
+        or not token.isascii()
+        or not token.isprintable()
+        or any(c.isspace() for c in token)
+    ):
+        raise AuthRequired()
+    return (
+        {"x-goog-api-key": token}
+        if credential.kind == "api_key"
+        else {"authorization": f"Bearer {token}"}
+    )
+
+
 def grpc_failure(error, page_token):
     from grpc import StatusCode
 
@@ -115,20 +131,7 @@ class YouTubeLive:
             from . import stream_list_pb2 as pb
         except ImportError:
             raise SourceUnavailable() from None
-        credential = request.source.credential
-        token = credential.resolve() if credential else None
-        if (
-            not token
-            or not token.isascii()
-            or not token.isprintable()
-            or any(character.isspace() for character in token)
-        ):
-            raise AuthRequired()
-        headers = (
-            {"x-goog-api-key": token}
-            if credential.kind == "api_key"
-            else {"authorization": f"Bearer {token}"}
-        )
+        headers = youtube_headers(request.source.credential)
         video_id = YouTubeParams.model_validate(request.source.params).video_id
         chat = await self._chat(video_id, headers, request.timeout_s)
         checkpoint = json.loads(request.checkpoint) if request.checkpoint else {}

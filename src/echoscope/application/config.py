@@ -37,6 +37,7 @@ class Job(StrictModel):
     interval_s: float = Field(default=60, ge=0.05, le=86400)
     timeout_s: float = Field(default=15, ge=0.05, le=300)
     rule_set: str
+    relevant_only: bool = False
 
 
 class RuleSpec(StrictModel):

@@ -154,6 +154,16 @@ class Store:
                         state=:state, detail=NULL, next_at=NULL WHERE job=:job"""),
                         {"enabled": job.enabled, "state": state, "job": job.id},
                     )
+                if old and not changed and (old.relevant_only or job.relevant_only):
+                    old_rules = previous.rule_sets.get(old.rule_set)
+                    if (
+                        old.relevant_only != job.relevant_only
+                        or old_rules != config.rule_sets[job.rule_set]
+                    ):
+                        await conn.execute(
+                            text("UPDATE runtime SET checkpoint=NULL WHERE job=:job"),
+                            {"job": job.id},
+                        )
             removed = set(old_jobs) - {job.id for job in config.jobs}
             for job_id in removed:
                 await conn.execute(text("DELETE FROM runtime WHERE job=:job"), {"job": job_id})
@@ -493,6 +503,7 @@ class Store:
             ("until", "s.captured<=:until", _iso(query.until)),
             ("before", "s.id<:before", query.before),
             ("after", "s.id>:after", query.after),
+            ("kind", "json_extract(s.metadata, '$.kind')=:kind", query.kind),
         ):
             if value is not None:
                 conditions.append(clause)
