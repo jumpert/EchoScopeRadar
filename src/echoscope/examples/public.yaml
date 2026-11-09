@@ -1,0 +1,18 @@
+version: 1
+sources:
+  - id: usgs
+    type: syndication
+    label: U.S. Geological Survey
+    params: {url: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.atom'}
+  - id: youtube
+    type: youtube_live
+    label: YouTube Live
+    credential: {kind: api_key, env: ECHOSCOPE_YOUTUBE_KEY}
+    params: {video_id: CAMBIAME123}
+jobs:
+  - {id: usgs, source: usgs, interval_s: 60, timeout_s: 20, rule_set: avisos}
+  - {id: directo, source: youtube, enabled: false, interval_s: 60, rule_set: avisos}
+rule_sets:
+  avisos:
+    - {id: sismo, phrase: M, severity: info}
+    - {id: demora, phrase: demora, severity: critical}

@@ -1,0 +1,25 @@
+version: 1
+sources:
+  - id: comentarios
+    type: sim_poll
+    label: Comentarios
+    params: {scenario: comments, cadence_s: 0.25}
+  - id: resenas
+    type: sim_poll
+    label: Reseñas
+    params: {scenario: reviews, cadence_s: 0.35, fail_attempts: 1}
+  - id: chat
+    type: sim_live
+    label: Chat en vivo
+    params: {scenario: chat, cadence_s: 1, disconnect_at: 6}
+jobs:
+  - {id: comentarios, source: comentarios, interval_s: 4, rule_set: avisos}
+  - {id: resenas, source: resenas, interval_s: 6, rule_set: avisos}
+  - {id: chat, source: chat, rule_set: avisos}
+rule_sets:
+  avisos:
+    - {id: atencion, phrase: atención, severity: info}
+    - {id: atencion_cliente, phrase: atención al cliente, severity: important}
+    - {id: excelente, phrase: excelente, severity: info}
+    - {id: demora, phrase: demora, severity: critical}
+    - {id: estado, phrase: perfecto estado, severity: info}
