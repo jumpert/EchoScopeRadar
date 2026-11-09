@@ -1,0 +1,4 @@
+from echoscope.presentation.desktop import main
+
+if __name__ == "__main__":
+    main()

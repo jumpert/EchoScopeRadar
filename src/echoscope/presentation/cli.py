@@ -77,8 +77,8 @@ def apply(ctx: typer.Context, path: Path):
 
 @config_app.command("example")
 def example(name: str = "public"):
-    if name not in {"demo", "public"}:
-        raise ValueError("Ejemplos disponibles: demo y public")
+    if name not in {"demo", "public", "defensa-uruguay"}:
+        raise ValueError("Ejemplos disponibles: demo, public y defensa-uruguay")
     typer.echo(
         files("echoscope.examples").joinpath(f"{name}.yaml").read_text(encoding="utf-8"), nl=False
     )

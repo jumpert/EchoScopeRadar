@@ -2,6 +2,18 @@
 
 Centro de monitoreo en terminal para comentarios, reseñas, feeds y chats de directos. Cada panel muestra los mensajes recibidos, incluidas las capturas sin coincidencias. Las reglas resaltan términos en el texto original y agrupan sus apariciones por alerta.
 
+## Versión 0.2.0 · Ventana de administración
+
+En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa y YouTube. Abrí **Probar EchoScope Radar.cmd** para practicar con datos simulados. La ventana ofrece formularios para agregar fuentes, editar el tema y cargar la clave de YouTube durante la sesión. Conserva su historial en una base propia.
+
+- [Guía para personal administrativo](docs/uso-administrativo.md)
+- [Pruebas y notas de prensa de Uruguay](docs/fuentes-uruguay.md)
+- [Historial de versiones](CHANGELOG.md)
+
+Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`. Si preferís ejecutar desde código fuente, usá `uv sync --locked --extra youtube` y `uv run --no-sync echoscope-desktop`.
+
+El modo de terminal y los comandos de las secciones siguientes sirven para operación técnica.
+
 ## Demo local
 
 Requiere Python 3.12 y `uv`. Los mismos comandos funcionan en Windows Terminal y Ubuntu.
