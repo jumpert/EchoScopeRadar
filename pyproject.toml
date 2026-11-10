@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "echoscope-radar"
-version = "0.3.0"
-description = "Console-first monitoring for comments, feeds and live chats"
+version = "0.4.0"
+description = "Local monitoring workspace for news, comments and live chats"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -21,6 +21,7 @@ windows-build = ["pyinstaller>=6,<7; sys_platform == 'win32'"]
 
 [project.scripts]
 echoscope = "echoscope.presentation.cli:main"
+echoscope-web = "echoscope.presentation.web:main"
 
 [project.gui-scripts]
 echoscope-desktop = "echoscope.presentation.desktop:main"
@@ -33,7 +34,7 @@ where = ["src"]
 namespaces = true
 
 [tool.setuptools.package-data]
-echoscope = ["examples/*.yaml", "connectors/*.proto", "connectors/LICENSE.youtube"]
+echoscope = ["examples/*.yaml", "connectors/*.proto", "connectors/LICENSE.youtube", "web_assets/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

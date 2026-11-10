@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>EchoScope Radar · Mesa de monitoreo</title>
+  <link rel="icon" href="/radar.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#workspace">Saltar a los resultados</a>
+  <header class="masthead">
+    <a class="brand" href="/" aria-label="EchoScope Radar, inicio">
+      <img src="/radar.svg" alt="" width="32" height="32">
+      <span>EchoScope<span class="brand-accent"> Radar</span></span>
+    </a>
+    <div class="header-actions">
+      <span class="live-pill" id="run-status"><i></i><span>Conectando</span></span>
+      <button id="theme" class="icon-button" type="button" title="Cambiar tema" aria-label="Cambiar tema">☼</button>
+      <button id="monitor" class="button primary" type="button" disabled>Pausar seguimiento</button>
+    </div>
+  </header>
+
+  <main id="workspace" class="workspace">
+    <div class="section-nav" role="tablist" aria-label="Secciones">
+      <button type="button" id="tab-board" role="tab" aria-selected="true" aria-controls="board-page" data-page="board">Mesa de monitoreo</button>
+      <button type="button" id="tab-sources" role="tab" aria-selected="false" aria-controls="sources-page" data-page="sources">Fuentes</button>
+      <button type="button" id="tab-settings" role="tab" aria-selected="false" aria-controls="settings-page" data-page="settings">Tema y acceso</button>
+      <span class="edition" id="edition">LOCAL</span>
+    </div>
+
+    <section id="board-page" role="tabpanel" aria-labelledby="tab-board" class="board-page">
+      <div class="board-heading">
+        <div><p class="eyebrow">CENTRO DE ESCUCHA</p><h1>Mesa de monitoreo</h1></div>
+        <button id="restore-layout" class="button subtle" type="button" hidden>↙ Restaurar vista</button>
+      </div>
+      <div class="toolbar">
+        <div id="panel-controls" class="panel-controls" aria-label="Paneles visibles"></div>
+        <div class="tools">
+          <label class="sr" for="filter">Buscar en resultados</label>
+          <input id="filter" type="search" placeholder="Buscar en resultados…" maxlength="200">
+          <label class="sr" for="match-mode">Tipo de coincidencia</label>
+          <select id="match-mode"><option value="all">Todas</option><option value="confirmed">Alertas</option><option value="review">Para revisar</option></select>
+          <button id="freeze" class="button subtle" type="button" aria-pressed="false" title="Pausar solo la vista">Congelar vista</button>
+        </div>
+      </div>
+      <div id="panels" class="panels" aria-label="Flujos de monitoreo"></div>
+      <section id="alert-panel" class="alert-panel" aria-labelledby="alerts-title">
+        <header class="alert-head">
+          <div class="alert-title"><span aria-hidden="true">◇</span><h2 id="alerts-title">Alertas</h2><span class="badge" id="alert-count">0</span></div>
+          <div class="alert-controls">
+            <button type="button" class="text-button" id="alert-review" aria-pressed="false">Para revisar</button>
+            <button type="button" class="text-button" id="hide-alerts" aria-expanded="true" aria-controls="alert-rows">Ocultar</button>
+          </div>
+        </header>
+        <div id="alert-rows" class="alert-rows"></div>
+      </section>
+    </section>
+
+    <section id="sources-page" role="tabpanel" aria-labelledby="tab-sources" class="settings-page" hidden>
+      <div class="section-heading"><div><p class="eyebrow">CONFIGURACIÓN</p><h1>Fuentes</h1><p>Elegí qué medios, videos, directos y comunidades seguir.</p></div><button id="add-source" class="button primary" type="button">+ Agregar fuente</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Fuente</th><th>Intervalo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="source-rows"></tbody></table></div>
+    </section>
+
+    <section id="settings-page" role="tabpanel" aria-labelledby="tab-settings" class="settings-page" hidden>
+      <div class="section-heading"><div><p class="eyebrow">CONFIGURACIÓN</p><h1>Tema y acceso</h1><p>Definí los términos del seguimiento y conectá YouTube.</p></div></div>
+      <div class="settings-grid">
+        <form class="card" id="topic-form"><h2>Lista blanca</h2><label for="topic">Un término o frase por línea</label><textarea id="topic" rows="10" required></textarea><p>Para aprobar una variante, escribí <code>Ejército | ejersito</code>. Las aproximaciones aparecen en «Para revisar».</p><button class="button primary" type="submit">Guardar lista blanca</button></form>
+        <div class="card"><form id="key-form"><h2>Acceso a YouTube</h2><p id="key-status">Comprobando acceso…</p><label for="youtube-key">Clave de YouTube Data API</label><input id="youtube-key" type="password" autocomplete="off" maxlength="4096" required><p>La clave se usa durante la sesión del motor.</p><button class="button primary" type="submit">Cargar clave</button></form>
+        <form id="youtube-form" class="stack-form"><h2>Buscar un video</h2><label for="youtube-search">Palabras o tema</label><input id="youtube-search" maxlength="200" placeholder="Ejército Nacional Uruguay" required><button class="button subtle" type="submit">Buscar en YouTube</button></form><div id="video-results" class="video-results"></div></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="statusbar"><span id="status" role="status" aria-live="polite">Preparando la mesa…</span><span id="updated"></span><button type="button" id="shutdown" class="text-button">Cerrar EchoScope</button></footer>
+
+  <dialog id="details" aria-labelledby="details-title">
+    <div class="dialog-head"><div><p class="eyebrow" id="details-type">RESULTADO</p><h2 id="details-title">Detalle</h2></div><button type="button" class="icon-button" data-close="details" aria-label="Cerrar detalle">×</button></div>
+    <p class="metadata" id="details-meta"></p><div id="details-text" class="detail-text"></div><ul id="details-matches" class="detail-matches"></ul>
+    <div class="dialog-actions"><a id="details-link" class="button primary" target="_blank" rel="noopener noreferrer" hidden>Abrir publicación ↗</a><button type="button" class="button subtle" data-close="details">Cerrar</button></div>
+  </dialog>
+
+  <dialog id="source-dialog" aria-labelledby="source-title">
+    <div class="dialog-head"><div><p class="eyebrow">CONFIGURACIÓN</p><h2 id="source-title">Agregar fuente</h2></div><button type="button" class="icon-button" data-close="source-dialog" aria-label="Cerrar formulario">×</button></div>
+    <form id="source-form" class="source-form">
+      <input type="hidden" id="source-id">
+      <label for="source-name">Nombre visible</label><input id="source-name" maxlength="80" required>
+      <label for="source-type">Tipo de fuente</label><select id="source-type" required></select>
+      <label for="source-address" id="address-label">Enlace</label><div class="input-row"><input id="source-address" maxlength="2048" required><button id="discover" type="button" class="button subtle" hidden>Detectar feed</button></div>
+      <div id="feed-token"><label for="source-token">Token del feed (opcional)</label><input id="source-token" type="password" autocomplete="off" maxlength="4096"></div>
+      <label for="source-minutes">Consultar cada cuántos minutos</label><input id="source-minutes" type="number" min="1" max="1440" value="15" required>
+      <label class="check"><input id="source-enabled" type="checkbox" checked> Activar fuente</label>
+      <label class="check"><input id="source-relevant" type="checkbox"> Guardar solo coincidencias con el tema</label>
+      <p id="source-feedback" class="feedback" role="status"></p>
+      <div class="dialog-actions"><button type="submit" class="button primary">Guardar fuente</button><button type="button" class="button subtle" data-close="source-dialog">Cancelar</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

@@ -1,16 +1,18 @@
 # EchoScope Radar
 
-Centro de monitoreo en terminal para comentarios, reseñas, feeds y chats de directos. Cada panel muestra los mensajes recibidos, incluidas las capturas sin coincidencias. Las reglas resaltan términos en el texto original y agrupan sus apariciones por alerta.
+Centro de monitoreo para comentarios, reseñas, feeds y chats de directos. Cada panel muestra los mensajes recibidos, incluidas las capturas sin coincidencias. Las reglas resaltan términos en el texto original y agrupan sus apariciones por alerta.
 
-## Versión 0.3.0 · Ventana de administración
+## Versión 0.4.0 · Mesa web de monitoreo
 
-En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa, YouTube y foros autorizados. Abrí **Probar EchoScope Radar.cmd** para practicar con datos simulados. La ventana ofrece pestañas por tipo de resultado, tema claro u oscuro, formularios para agregar fuentes y carga de la clave de YouTube durante la sesión. El seguimiento se inicia al abrir la ventana normal y continúa mientras esté minimizada.
+En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa, YouTube y foros autorizados desde el navegador. Abrí **Probar EchoScope Radar.cmd** para practicar con datos simulados. La mesa muestra varios flujos y alertas a la vez. Cada panel se puede ocultar o ampliar. Podés alternar entre tema claro y oscuro, agregar fuentes y cargar la clave de YouTube durante la sesión.
 
 - [Guía para personal administrativo](docs/uso-administrativo.md)
 - [Pruebas y notas de prensa de Uruguay](docs/fuentes-uruguay.md)
 - [Historial de versiones](CHANGELOG.md)
 
-Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/0.3.0/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`. Si preferís ejecutar desde código fuente, usá `uv sync --locked --extra youtube` y `uv run --no-sync echoscope-desktop`.
+Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/0.4.0/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`.
+
+En Windows y Ubuntu, podés ejecutar desde código fuente con `uv sync --locked --extra youtube` y `uv run --no-sync echoscope-web`. Agregá `--demo` para practicar. La aplicación web escucha en la propia computadora. Si el puerto está ocupado, indicá otro con `--port 8770`. La interfaz anterior sigue disponible con `uv run --no-sync echoscope-desktop` o `EchoScopeRadar.exe --desktop`.
 
 El modo de terminal y los comandos de las secciones siguientes sirven para operación técnica.
 
@@ -56,7 +58,7 @@ Para un feed protegido, agregá `credential: {kind: bearer, env: ECHOSCOPE_FEED_
 
 Para YouTube Live instalá `uv sync --locked --extra youtube`. En el ejemplo, cambiá `video_id` por el ID de un directo y habilitá la tarea `directo`. Inyectá una clave de proyecto en `ECHOSCOPE_YOUTUBE_KEY` o seleccioná `kind: oauth` y una variable con un token vigente. La clave o token deben tener acceso a la API de YouTube. Volvé a aplicar el archivo con el motor detenido y abrí la consola. Un chat pendiente, cerrado, sin permisos o limitado por cuota se muestra como estado operativo. Un hueco posible después de una reconexión aparece como `CAPTURA PARCIAL`. El chat de YouTube tiene una ventana local de hasta 200 mensajes por tarea en memoria y aparece como `SOLO SESIÓN`. [Guía oficial de YouTube Live](https://developers.google.com/youtube/data/live/streaming-live-chat)
 
-La cobertura depende del recurso y del acceso que ofrece cada proveedor. Instagram Live, comentarios de videos de YouTube, Twitch y otros conectores de plataforma pertenecen a los siguientes hitos.
+La cobertura depende del recurso y del acceso que ofrece cada proveedor. La mesa web incluye comentarios de videos y chat de directos de YouTube. Instagram Live, Twitch y otros conectores de plataforma pertenecen a los siguientes hitos.
 
 ## Operación y datos
 

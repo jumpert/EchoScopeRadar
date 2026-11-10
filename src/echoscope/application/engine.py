@@ -543,6 +543,7 @@ class Radar:
                         or any(not match.confirmed for match in item.observation.matches)
                     )
                     and (query.kind is None or item.observation.message.kind == query.kind)
+                    and (query.exclude_kind is None or item.observation.message.kind != query.exclude_kind)
                     and (
                         query.category is None
                         or category(item.observation.message.kind, item.observation.message.origin)

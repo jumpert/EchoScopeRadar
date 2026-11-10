@@ -20,6 +20,7 @@ RULE_SET = "defensa"
 SOURCE_TYPES = {
     "Noticias de un sitio (RSS)": ("press_feed", "NEWS_ARTICLE"),
     "Comentarios de un sitio (RSS)": ("syndication", "PRESS_COMMENT"),
+    "Reseñas de un sitio (RSS/Atom)": ("syndication", "REVIEW"),
     "Foro o comunidad (RSS/Atom)": ("syndication", "FORUM_POST"),
     "Comentarios de un video de YouTube": ("youtube_comments", "COMMENT"),
     "Chat de un directo de YouTube": ("youtube_live", "LIVE_CHAT"),
@@ -234,13 +235,18 @@ class Administration:
     async def snapshot(self, query):
         radar = self.radar
         snapshots = dict(radar.jobs) if radar else await self.store.snapshots()
+        results = await self.messages(query)
+        return snapshots, results, bool(radar), bool(os.environ.get(YOUTUBE_KEY))
+
+    async def messages(self, query):
+        radar = self.radar
         results = await self.store.messages(query)
         if radar and query.before is None:
             for identifier in list(radar.session):
                 if query.job_id in (None, identifier):
                     results += await radar.messages(replace(query, job_id=identifier))
         results.sort(key=lambda result: result.observation.message.captured_at, reverse=True)
-        return snapshots, results[: query.limit], bool(radar), bool(os.environ.get(YOUTUBE_KEY))
+        return results[: query.limit]
 
     async def _apply(self, config):
         Configuration.model_validate(config.model_dump())

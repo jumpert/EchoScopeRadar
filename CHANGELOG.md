@@ -1,5 +1,12 @@
 # Historial de versiones
 
+## 0.4.0
+
+- Mesa web local de monitoreo como interfaz administrativa predeterminada en Windows. Reutiliza el motor, los perfiles, las preferencias y el historial de SQLite.
+- Seis tipos de flujo combinables, paneles con desplazamiento propio, controles para ocultar y maximizar, y bandeja de alertas debajo de la mesa.
+- Tema claro u oscuro, filtros, detalle con resaltado exacto y pausa visual independiente del seguimiento.
+- Formularios web para fuentes, lista blanca, acceso a YouTube y descubrimiento manual. El modo de práctica arranca con chat, comentarios y reseñas simulados.
+
 ## 0.3.0
 
 - Pestañas en la ventana principal para Noticias, Comentarios de prensa, YouTube, Directos y Foros. Tema claro u oscuro guardado por perfil local.

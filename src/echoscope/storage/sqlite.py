@@ -539,6 +539,7 @@ class Store:
             ("before", "s.id<:before", query.before),
             ("after", "s.id>:after", query.after),
             ("kind", "json_extract(s.metadata, '$.kind')=:kind", query.kind),
+            ("exclude_kind", "json_extract(s.metadata, '$.kind')<>:exclude_kind", query.exclude_kind),
             (
                 "category",
                 "radar_category(json_extract(s.metadata, '$.kind'),json_extract(s.metadata, '$.origin'))=:category",

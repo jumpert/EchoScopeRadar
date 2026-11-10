@@ -102,6 +102,7 @@ class HistoryQuery:
     kind: Kind | None = None
     category: str | None = None
     review_only: bool = False
+    exclude_kind: Kind | None = None
 
 
 def category(kind: Kind, origin: str) -> str:
