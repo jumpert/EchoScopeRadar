@@ -263,10 +263,16 @@ def publication_display(message, matches):
     else:
         header = [[title, None]] if title else []
         body_start = 0
+    body = message.text[body_start:].strip()
+    preview = " ".join(body[:141].split())
+    if len(body) > 140:
+        cut = preview[:140].rfind(" ")
+        preview = preview[: cut if cut > 95 else 140].rstrip() + "…"
     return {
         "title": title,
         "title_fragments": header,
         "fragments": match_context(message.text, matches, body_start),
+        "preview": preview,
     }
 
 
@@ -452,6 +458,9 @@ async def board(request):
                     "gap": snap.coverage_gap,
                     "next": snap.next_at.isoformat() if snap.next_at else None,
                     "categories": source_categories(snap.source),
+                    "uses_session_key": bool(
+                        snap.source.credential and snap.source.credential.env == YOUTUBE_KEY
+                    ),
                 }
                 for key, snap in snapshots.items()
             ],
@@ -500,10 +509,20 @@ async def action(request):
     elif name == "probe":
         result = await service.probe(TextInput.model_validate(data).value)
         return web.json_response({"detail": result.detail or "Consulta completada."})
+    elif name == "run-source":
+        await service.run_source(TextInput.model_validate(data).value)
+        return web.json_response({"detail": "Consulta programada. Revisá el estado en Fuentes."})
     elif name == "discover":
         return web.json_response(
             {"url": await service.detect_comments(TextInput.model_validate(data).value)}
         )
+    elif name == "discover-reviews":
+        return web.json_response(
+            {"url": await service.detect_reviews(TextInput.model_validate(data).value)}
+        )
+    elif name == "check-youtube":
+        await service.check_youtube()
+        return web.json_response({"detail": "YouTube aceptó la clave de esta sesión."})
     elif name == "key":
         await service.credentials(TextInput.model_validate(data).value)
     elif name == "web-key":

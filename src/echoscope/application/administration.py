@@ -6,9 +6,9 @@ from uuid import uuid4
 
 from echoscope.bootstrap import registry
 from echoscope.connectors.bluesky import BlueskyParams
-from echoscope.connectors.comment_feed import discover_comment_feed
+from echoscope.connectors.comment_feed import discover_comment_feed, discover_discussion_feeds
 from echoscope.connectors.syndication import public_url
-from echoscope.connectors.youtube_channel import channel_reference
+from echoscope.connectors.youtube_channel import channel_reference, check_access
 from echoscope.connectors.youtube_comments import find_videos, video_id
 from echoscope.storage.sqlite import Store
 
@@ -419,6 +419,19 @@ class Administration:
 
     async def detect_comments(self, url):
         return await discover_comment_feed(url.strip())
+
+    async def detect_reviews(self, url):
+        feeds = await discover_discussion_feeds(url.strip())
+        return next((address for address, kind in feeds if kind == "REVIEW"), None)
+
+    async def check_youtube(self):
+        await check_access(Credential(kind="api_key", env=YOUTUBE_KEY))
+
+    async def run_source(self, job_id):
+        async with self.guard:
+            if not self.radar:
+                raise ValueError("Iniciá el seguimiento antes de consultar esta fuente.")
+            await self.radar.execute(JobCommand(job_id, "run_now"))
 
     async def theme(self):
         return await self.store.desktop_setting("theme") or "light"

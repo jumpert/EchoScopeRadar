@@ -6,7 +6,12 @@ import aiohttp
 from pydantic import Field, field_validator
 
 from echoscope.application.config import StrictModel
-from echoscope.application.ports import SourceEnded, SourceUnavailable, SourceWaiting
+from echoscope.application.ports import (
+    LiveChatPending,
+    SourceEnded,
+    SourceUnavailable,
+    SourceWaiting,
+)
 from echoscope.domain.models import Batch, Kind, Message
 from echoscope.domain.rules import evaluate
 
@@ -49,6 +54,12 @@ def _session(timeout):
     return aiohttp.ClientSession(
         trust_env=False, timeout=aiohttp.ClientTimeout(total=min(timeout, 12))
     )
+
+
+async def check_access(credential):
+    headers = youtube_headers(credential)
+    async with _session(10) as session:
+        await _get(session, "channels", {"part": "id", "id": "UCeeEsGE06kae6DF-yOGT1Tw"}, headers)
 
 
 def _text(snippet):
@@ -145,6 +156,7 @@ class YouTubeChannelLive(_Channel):
                 },
                 headers,
             )
+        found = connected = False
         for item in data.get("items", []):
             identifier = item.get("id", {}).get("videoId")
             snippet = item.get("snippet", {})
@@ -153,6 +165,7 @@ class YouTubeChannelLive(_Channel):
                 match.confirmed for match in evaluate(body, request.rules)
             ):
                 continue
+            found = True
             yield Batch(
                 (
                     Message(
@@ -167,11 +180,13 @@ class YouTubeChannelLive(_Channel):
                     ),
                 ),
                 request.checkpoint,
+                stream_ready=False,
             )
             source = request.source.model_copy(update={"params": {"video_id": identifier}})
             try:
                 async for batch in YouTubeLive().stream(replace(request, source=source)):
+                    connected |= batch.stream_ready
                     yield batch
             except (SourceEnded, SourceUnavailable, SourceWaiting):
                 continue
-        raise SourceWaiting()
+        raise LiveChatPending() if found and not connected else SourceWaiting()

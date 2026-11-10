@@ -6,6 +6,19 @@ const labels = {
   news: "Noticias", youtube: "Videos de YouTube", forum: "Foros",
   social: "Redes sociales",
 };
+const helpText = {
+  board: ["Cómo usar la mesa", "Elegí qué pestañas ver y buscá dentro de lo ya recibido. «Alertas» muestra las coincidencias confirmadas. Congelar vista mantiene lo que ves mientras la captura sigue. Para buscar publicaciones nuevas, elegí Buscar por tema."],
+  news: ["Noticias", "Titulares y extractos de los medios que seguís. Abrí el enlace de origen para leer la nota completa."],
+  press: ["Comentarios de prensa", "Aquí aparecen los comentarios de notas que ofrecen un feed accesible. También podés agregar un feed de comentarios desde Fuentes."],
+  youtube: ["Videos de YouTube", "Cargá y verificá tu clave en Tema y acceso. Los canales automáticos consultan videos recientes relacionados con tus términos. Para leer un video concreto, agregá su enlace en Fuentes."],
+  live: ["Chat en vivo", "Los canales automáticos esperan un directo relacionado con tus términos. Para probar uno que está al aire, agregá el enlace del directo en Fuentes. YouTube debe tener el chat habilitado y accesible."],
+  reviews: ["Reseñas", "Agregá un RSS/Atom de reseñas desde Fuentes. Si tenés el enlace de la página, usá Detectar feed. Una nota sin un feed de reseñas no aparecerá en esta pestaña."],
+  forum: ["Foros", "Agregá el RSS o Atom público del foro para recibir sus publicaciones. Abrí el enlace de origen para ver la conversación completa."],
+  social: ["Redes sociales", "Podés seguir respuestas de un hilo público de Bluesky. Las publicaciones de otras redes encontradas por búsqueda abren en su sitio de origen."],
+  alerts: ["Cómo leer las alertas", "Una alerta confirma que apareció un término de tu lista. «Para revisar» reúne aproximaciones. Abrí un resultado para ver el contexto o descargá un PDF por fechas."],
+  sources: ["Configurar fuentes", "Agregá un enlace, elegí qué querés leer y guardá la fuente. Con el seguimiento activo, «Consultar ahora» solicita un nuevo ciclo respetando el intervalo mínimo. El estado indica qué ocurrió."],
+  access: ["Configurar tema y acceso", "Escribí un término o frase por línea. Para consultar YouTube, cargá tu clave de YouTube Data API y usá Verificar acceso. La clave se carga para esta sesión."],
+};
 const names = {
   COMMENT: "Comentario", REVIEW: "Reseña", LIVE_CHAT: "Chat en vivo", FEED_ENTRY: "Publicación",
   NEWS_ARTICLE: "Noticia", YOUTUBE_VIDEO: "Video", YOUTUBE_LIVE: "Directo", FORUM_POST: "Foro", PRESS_COMMENT: "Comentario de prensa",
@@ -19,12 +32,21 @@ const jobStates = {
   DISABLED: "Desactivada", IDLE: "Finalizada", SCHEDULED: "Programada", RUNNING: "Consultando",
   PAUSED: "En pausa", RETRYING: "Reintentando", RATE_LIMITED: "Cuota alcanzada", ERROR: "Revisar conexión",
 };
+const sourceDetails = {
+  "CREDENCIAL AUSENTE O INVÁLIDA": "Cargá o verificá la clave de YouTube",
+  "ESPERANDO DIRECTO": "Sin directos pertinentes activos",
+  "DIRECTO ENCONTRADO, CHAT NO DISPONIBLE": "Directo encontrado sin chat accesible",
+  "CHAT NO DISPONIBLE": "Chat no disponible en YouTube",
+  "DIRECTO FINALIZADO": "El directo terminó",
+  "SIN PERMISO": "El proveedor rechazó el acceso",
+  "LÍMITE DE CONSUMO": "Límite de consultas del proveedor",
+};
 const styles = new Set(Object.keys(severity));
 const ui = {
   token: "", practice: false, jobs: [], types: [], visible: [], focus: null, theme: "dark",
   alertsVisible: true, alertMode: "confirmed", frozen: false, running: false, statuses: [],
   limit: 45, page: "board", sequence: 0, noticeUntil: 0, timer: null, closed: false,
-  columns: 3, widths: {}, order: [], defaults: [], projection: false,
+  columns: 3, widths: {}, order: [], defaults: [], projection: false, youtubeKeyLoaded: false,
 };
 const streams = new Map();
 const time = new Intl.DateTimeFormat("es-UY", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -46,6 +68,13 @@ function button(text, className, callback, title) {
   }
   element.addEventListener("click", callback);
   return element;
+}
+
+function showHelp(key) {
+  const [title, body] = helpText[key];
+  $("help-title").textContent = title;
+  $("help-text").textContent = body;
+  $("help-dialog").showModal();
 }
 
 function originLink(url, label = null, className = "origin-link") {
@@ -247,7 +276,8 @@ function buildLayout() {
     handle.title = `Arrastrar ${label} sobre otro panel`;
     handle.setAttribute("aria-hidden", "true");
     enablePanelDrag(handle, key);
-    actions.append(handle, arrange, expand, button("−", "icon-button", () => hidePanel(key), `Ocultar ${label}`));
+    actions.append(button("ⓘ", "icon-button help-point", () => showHelp(key), `Ayuda sobre ${label}`), handle, arrange, expand,
+      button("−", "icon-button", () => hidePanel(key), `Ocultar ${label}`));
     const head = node("header", "stream-head");
     head.append(title, actions);
     const meta = node("div", "stream-meta", "Preparando flujo…");
@@ -275,12 +305,12 @@ function richText(container, fragments) {
   }
 }
 
-function appendContext(parent, item, tag = "span") {
+function appendContext(parent, item, tag = "span", preview = false) {
   if (item.fragments?.length) {
     const excerpt = node(tag, "match-context");
     richText(excerpt, item.fragments);
     parent.append(excerpt);
-  }
+  } else if (preview && item.preview) parent.append(node(tag, "match-context", item.preview));
 }
 
 function appendTitle(parent, item, tag = "strong", fallback = "") {
@@ -359,16 +389,23 @@ function renderPanel(key, rows, statuses) {
   const stream = streams.get(key);
   const applicable = statuses.filter((item) => item.categories.includes(key));
   const next = applicable.filter((item) => item.next).map((item) => item.next).sort()[0];
-  const live = applicable.some((item) => item.availability === "LIVE");
+  const live = applicable.some((item) => item.availability === "LIVE" && item.state === "RUNNING");
   const watching = applicable.some((item) => item.state === "RUNNING");
   const issue = applicable.find((item) => ["ERROR", "RATE_LIMITED"].includes(item.state));
-  const status = live ? "En directo" : watching ? "Consultando" : issue ? (jobStates[issue.state] ?? "Revisar conexión") :
-    applicable.some((item) => item.availability === "WAITING") ? "En espera de un directo" : next && ui.running ? `Próxima ${time.format(new Date(next))}` :
+  const waiting = applicable.find((item) => item.availability === "WAITING");
+  const status = live ? "Chat conectado" : watching ? "Consultando" : issue ? (sourceDetails[issue.detail] ?? jobStates[issue.state]) :
+    waiting ? (sourceDetails[waiting.detail] ?? "En espera de un directo") : next && ui.running ? `Próxima ${time.format(new Date(next))}` :
     applicable.length ? (ui.running ? "Disponible" : "Seguimiento pausado") : "Sin fuentes configuradas";
   stream.meta.textContent = `● ${status} · ${rows.length} resultados${ui.practice ? " · práctica" : ""}`;
   stream.meta.title = applicable.map((item) => `${item.name} · ${item.detail || jobStates[item.state]}`).join("\n");
   stream.load.hidden = rows.length < ui.limit || ui.limit >= 200;
-  const signature = JSON.stringify(rows);
+  let empty = applicable.length ? "Todavía no hay resultados para este filtro." : "Agregá una fuente para empezar a seguir este flujo.";
+  const needsKey = !ui.practice && ["live", "youtube"].includes(key) && !ui.youtubeKeyLoaded && applicable.length && applicable.every((item) => item.uses_session_key);
+  if (needsKey) empty = "Para las fuentes configuradas por defecto, cargá la clave en Tema y acceso y elegí Verificar acceso.";
+  else if (key === "live" && waiting) empty = "Podés esperar al siguiente ciclo o agregar el enlace de un directo que esté al aire y tenga chat habilitado.";
+  else if (key === "youtube" && applicable.some((item) => item.detail === "SIN RESULTADOS")) empty = "La última consulta no devolvió resultados para alguna fuente. Revisá los términos del canal o agregá un video por su enlace.";
+  else if (key === "reviews" && !ui.practice) empty = "Todavía no se recibieron reseñas. Agregá un RSS/Atom de reseñas desde Fuentes o usá Detectar feed en una página.";
+  const signature = JSON.stringify([empty, rows]);
   if (signature === stream.signature) return;
   stream.signature = signature;
   replaceRecords(stream.list, rows, (item) => {
@@ -377,10 +414,17 @@ function renderPanel(key, rows, statuses) {
     const text = node("span", "record-body");
     appendTitle(text, item);
     text.append(node("span", "author", item.author || item.source));
-    appendContext(text, item);
+    appendContext(text, item, "span", true);
     control.append(text);
     return withOrigin(control, item);
-  }, applicable.length ? "Todavía no hay resultados para este filtro." : "Agregá una fuente para empezar a seguir este flujo.");
+  }, empty);
+  if (!rows.length && (needsKey || (key === "reviews" && !ui.practice))) {
+    const action = needsKey ? button("Ir a Tema y acceso", "button subtle", () => {
+      choosePage("settings");
+      $("youtube-key").focus();
+    }) : button("Agregar fuente de reseñas", "button subtle", () => showSource({ type_label: "Reseñas de un sitio (RSS/Atom)" }));
+    stream.list.firstElementChild.append(node("br", ""), action);
+  }
 }
 
 let alertSignature;
@@ -420,7 +464,8 @@ function renderSources() {
     title.append(node("div", "metadata", job.type_label ?? "Fuente simulada"));
     const info = states.get(job.id);
     const status = node("td", "", !job.enabled ? "Desactivada" : !ui.running ? "Seguimiento pausado" : (jobStates[info?.state] ?? "Disponible"));
-    if (info?.detail) status.append(node("div", "metadata", info.detail));
+    if (info?.detail) status.append(node("div", "metadata", sourceDetails[info.detail] ?? info.detail));
+    if (info?.next && ui.running) status.append(node("div", "metadata", `Próxima consulta: ${time.format(new Date(info.next))}`));
     const actions = node("td");
     if (job.type_label) actions.append(button("Editar", "button subtle", () => showSource(job)));
     if (job.type_label) {
@@ -431,6 +476,7 @@ function renderSources() {
       }));
     }
     if (!ui.running && job.enabled && job.polling) actions.append(button("Consultar", "button subtle", () => runAction("probe", { value: job.id })));
+    if (ui.running && job.enabled && !["RUNNING", "PAUSED", "RATE_LIMITED"].includes(info?.state)) actions.append(button("Consultar ahora", "button subtle", () => runAction("run-source", { value: job.id })));
     row.append(title, node("td", "", job.categories.includes("live") && job.minutes < 2 ? "En vivo" : `${job.minutes.toLocaleString("es-UY", { maximumFractionDigits: 2 })} min`), status, actions);
     return row;
   });
@@ -446,6 +492,7 @@ async function refresh(force = false) {
     const data = await api(`board?${params}`);
     if (number !== ui.sequence || ui.closed) return;
     ui.running = data.running;
+    ui.youtubeKeyLoaded = data.key_loaded;
     ui.statuses = data.statuses;
     $("monitor").disabled = false;
     $("monitor").textContent = data.running ? "Pausar seguimiento" : "Iniciar seguimiento";
@@ -492,9 +539,10 @@ function sourceFields() {
   const type = $("source-type").value;
   const feed = type.includes("RSS");
   const comments = type.startsWith("Comentarios de un sitio");
-  $("address-label").textContent = feed ? (comments ? "Enlace del feed o de la nota" : "Enlace HTTPS al RSS/Atom") :
+  const reviews = type.startsWith("Reseñas de un sitio");
+  $("address-label").textContent = feed ? (comments || reviews ? "Enlace del feed o de la página" : "Enlace HTTPS al RSS/Atom") :
     (type.includes("Bluesky") ? "Enlace de la publicación de Bluesky" : type.startsWith("Canal") ? "Enlace o @nombre del canal de YouTube" : "Enlace del video o directo");
-  $("discover").hidden = !comments;
+  $("discover").hidden = !comments && !reviews;
   $("feed-token").hidden = !feed;
   const minutes = $("source-minutes");
   minutes.min = type.includes("directos automáticos") ? "30" : (type.includes("videos automáticos") || type.includes("Comentarios de un video") ? "5" : "1");
@@ -589,6 +637,10 @@ document.querySelectorAll("[data-page]").forEach((tab) => {
   });
 });
 document.querySelectorAll("[data-close]").forEach((control) => control.addEventListener("click", () => $(control.dataset.close).close()));
+for (const [selector, key] of [[".board-heading h1", "board"], ["#sources-page h1", "sources"], ["#settings-page h1", "access"], ["#alert-count", "alerts"]]) {
+  const point = button("ⓘ", "icon-button help-point", () => showHelp(key), helpText[key][0]);
+  document.querySelector(selector).after(point);
+}
 $("monitor").addEventListener("click", () => runAction("monitor", { enabled: !ui.running }));
 $("theme").addEventListener("click", async () => {
   const previous = ui.theme;
@@ -631,11 +683,12 @@ $("hide-alerts").addEventListener("click", () => {
 $("add-source").addEventListener("click", () => showSource());
 $("source-type").addEventListener("change", sourceFields);
 $("discover").addEventListener("click", async () => {
-  $("source-feedback").textContent = "Buscando un feed anunciado por la nota…";
+  const reviews = $("source-type").value.startsWith("Reseñas de un sitio");
+  $("source-feedback").textContent = "Buscando un feed anunciado por la página…";
   try {
-    const data = await api("discover", { value: $("source-address").value });
+    const data = await api(reviews ? "discover-reviews" : "discover", { value: $("source-address").value });
     if (data.url) $("source-address").value = data.url;
-    $("source-feedback").textContent = data.url ? "Feed encontrado. Guardá la fuente para consultarlo." : "La nota no anuncia un feed público de comentarios.";
+    $("source-feedback").textContent = data.url ? "Feed encontrado. Guardá la fuente para consultarlo." : `La página no anuncia un feed público de ${reviews ? "reseñas" : "comentarios"}.`;
   } catch (error) { $("source-feedback").textContent = error.message; }
 });
 $("source-form").addEventListener("submit", async (event) => {
@@ -668,6 +721,18 @@ $("key-form").addEventListener("submit", async (event) => {
   $("youtube-key").value = "";
   await runAction("key", { value }, "Clave cargada para esta sesión.");
 });
+const youtubeCheckStatus = node("p", "feedback");
+youtubeCheckStatus.setAttribute("role", "status");
+const youtubeCheck = button("Verificar acceso", "button subtle", async () => {
+  youtubeCheck.disabled = true;
+  youtubeCheckStatus.textContent = "Verificando con YouTube…";
+  try {
+    const result = await api("check-youtube", {});
+    youtubeCheckStatus.textContent = result.detail;
+  } catch (error) { youtubeCheckStatus.textContent = error.message; }
+  finally { youtubeCheck.disabled = false; }
+});
+$("key-form").append(youtubeCheck, youtubeCheckStatus);
 $("web-key-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const value = $("web-key").value;

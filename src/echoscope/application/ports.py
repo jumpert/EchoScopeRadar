@@ -121,6 +121,10 @@ class SourceWaiting(ConnectorError):
     label = "ESPERANDO DIRECTO"
 
 
+class LiveChatPending(SourceWaiting):
+    label = "DIRECTO ENCONTRADO, CHAT NO DISPONIBLE"
+
+
 class SourceEnded(ConnectorError):
     label = "DIRECTO FINALIZADO"
 

@@ -210,7 +210,9 @@ async def test_channel_discovery_only_fetches_confirmed_topic_comments(monkeypat
     live = True
     monkeypatch.setattr("echoscope.connectors.youtube_channel.YouTubeLive.stream", chat)
     stream = YouTubeChannelLive().stream(request)
-    assert (await anext(stream)).messages[0].kind == Kind.YOUTUBE_LIVE
-    assert (await anext(stream)).messages[0].kind == Kind.LIVE_CHAT
+    metadata = await anext(stream)
+    assert metadata.messages[0].kind == Kind.YOUTUBE_LIVE and not metadata.stream_ready
+    received = await anext(stream)
+    assert received.messages[0].kind == Kind.LIVE_CHAT and received.stream_ready
     with pytest.raises(SourceWaiting):
         await anext(stream)

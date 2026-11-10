@@ -89,6 +89,11 @@
 
   <footer class="statusbar"><span id="status" role="status" aria-live="polite">Preparando la mesa…</span><span id="updated"></span><button type="button" id="shutdown" class="text-button">Cerrar EchoScope</button></footer>
 
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <div class="dialog-head"><div><p class="eyebrow">AYUDA</p><h2 id="help-title"></h2></div><button class="icon-button" type="button" data-close="help-dialog" aria-label="Cerrar ayuda">×</button></div>
+    <p class="metadata" id="help-text"></p>
+  </dialog>
+
   <dialog id="topic-search-dialog" aria-labelledby="topic-search-title">
     <div class="dialog-head"><div><p class="eyebrow">DESCUBRIMIENTO</p><h2 id="topic-search-title">Buscar por tema</h2></div><button type="button" class="icon-button" data-close="topic-search-dialog" aria-label="Cerrar búsqueda">×</button></div>
     <p class="metadata">Escribí un tema. EchoScope consulta el historial, los feeds activos y los proveedores habilitados. YouTube y Brave reciben el texto de la consulta si cargaste sus claves.</p>

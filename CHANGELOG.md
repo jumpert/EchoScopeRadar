@@ -1,5 +1,11 @@
 # Historial de versiones
 
+## 0.6.2
+
+- Vistas previas breves en todas las pestañas de la mesa, incluso en resultados sin coincidencias.
+- Ayudas ⓘ por panel y mensajes que explican por qué una fuente todavía no entrega datos.
+- Verificación de la clave de YouTube, consultas manuales desde Fuentes y detección de feeds de reseñas.
+
 ## 0.6.1
 
 - Titulares separados del contenido y hasta tres fragmentos alrededor de las coincidencias. La mesa, la búsqueda y las conversaciones conservan el enlace al original.

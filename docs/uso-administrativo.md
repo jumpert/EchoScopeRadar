@@ -56,7 +56,8 @@ Si el medio te entrega un token Bearer para un feed protegido, ingresalo en el c
 ## Interpretar los resultados
 
 - **Notas** son publicaciones del medio. **Comentarios** y **Chats en vivo** identifican mensajes de lectores y espectadores.
-- El titular se muestra separado. En el cuerpo se ven hasta tres fragmentos alrededor de las coincidencias; los puntos suspensivos indican texto omitido. Usá el enlace de origen para abrir el contenido completo cuando esté disponible.
+- En la mesa, cada resultado muestra unas líneas del cuerpo. Si hay coincidencias, se prioriza su contexto. En el detalle se ven hasta tres fragmentos alrededor de las coincidencias. Usá el enlace de origen para abrir el contenido completo cuando esté disponible.
+- Los puntos **ⓘ** explican cada pestaña y orientan sobre fuentes, filtros y alertas. En **Tema y acceso**, **Verificar acceso** comprueba que YouTube acepte la clave. En **Fuentes**, **Consultar ahora** adelanta una consulta cuando el proveedor ya lo permite.
 - El término que disparó la alerta se resalta en el mensaje y en la bandeja. El símbolo junto al mensaje indica el tono estimado en español: **＋** positivo, **−** negativo, **±** mixto y **·** neutro. Es una estimación por vocabulario, con precisión limitada en ironía y lenguaje ambiguo. El tono y la severidad se muestran por separado.
 - Las fuentes con filtro temático guardan solo coincidencias. En un video que ya elegiste por el tema, podés dejar ese filtro desactivado para ver todos los comentarios de la ventana consultada.
 - **Cobertura parcial** indica que la fuente entregó una ventana limitada, faltaron respuestas o hubo un hueco durante la captura. La búsqueda muestra la ventana disponible y el historial local.

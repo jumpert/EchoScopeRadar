@@ -218,8 +218,16 @@ class Radar:
         async with self.controls:
             if not self._active(key):
                 return
+            current = self.jobs[key]
             snapshot = replace(
-                self.jobs[key], state=State.RUNNING, last_at=self.now(), next_at=None, detail=None
+                current,
+                state=State.RUNNING,
+                last_at=self.now(),
+                next_at=None,
+                detail=None,
+                availability=Availability.WAITING
+                if current.availability == Availability.LIVE
+                else current.availability,
             )
             execution = await self._write(self.store.start, self._durable(snapshot))
             self.jobs[key] = snapshot
@@ -372,7 +380,9 @@ class Radar:
                 current,
                 checkpoint=batch.checkpoint,
                 coverage_gap=current.coverage_gap or batch.coverage_gap,
-                availability=Availability.LIVE if definition.mode == "stream" else None,
+                availability=(Availability.LIVE if batch.stream_ready else current.availability)
+                if definition.mode == "stream"
+                else None,
             )
             await self._write(
                 self.store.apply,
@@ -482,7 +492,11 @@ class Radar:
                             raise ValueError("La cuota requiere recuperación manual")
                     definition = self.registry[current.source.type]
                     next_at = None
-                    if definition.mode == "poll" and current.last_at and definition.min_interval_s:
+                    if (
+                        (definition.mode == "poll" or action == "run_now")
+                        and current.last_at
+                        and definition.min_interval_s
+                    ):
                         earliest = current.last_at + timedelta(seconds=definition.min_interval_s)
                         if action == "run_now" and self.now() < earliest:
                             raise ValueError("Todavía rige el intervalo mínimo de la fuente")

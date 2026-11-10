@@ -102,6 +102,11 @@ h2 { font-size:15px; letter-spacing:-.02em }
 .record-time,.author { color:var(--quiet); font-size:11px }
 .author { margin-right:8px }
 .record-body { overflow-wrap:anywhere; min-width:0 }
+.record .match-context { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden }
+.help-point { color:var(--accent); font-size:13px; vertical-align:middle }
+:is(.board-heading,.section-heading) h1:has(+.help-point) { display:inline-block; margin-right:8px; vertical-align:middle }
+#help-dialog { max-width:480px }
+#help-text { line-height:1.6 }
 .publication-title { display:block; margin:0 0 3px; color:var(--text); font-family:var(--font); font-weight:730; line-height:1.35; overflow-wrap:anywhere }
 .match-context { display:block; margin:4px 0 0; padding-left:8px; border-left:2px solid var(--line); color:var(--muted); white-space:pre-line; overflow-wrap:anywhere; line-height:1.5 }
 .alert-summary .publication-title { flex-basis:100%; font-size:12px }

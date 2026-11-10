@@ -36,7 +36,13 @@ def test_publications_keep_title_separate_and_omit_unrelated_body():
         excerpt = "".join(part for part, _ in display["fragments"])
         assert "publicó el resumen" in excerpt and "presenta un informe" not in excerpt
         assert len(excerpt) < 180
-        assert publication_display(message, matches[:1])["fragments"] == []
+        without_body_match = publication_display(message, matches[:1])
+        assert without_body_match["fragments"] == []
+        assert without_body_match["preview"].startswith("intro-lejana")
+        assert (
+            without_body_match["preview"].endswith("…")
+            and len(without_body_match["preview"]) <= 141
+        )
 
 
 async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path):

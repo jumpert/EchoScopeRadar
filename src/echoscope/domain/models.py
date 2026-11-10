@@ -80,6 +80,7 @@ class Batch:
     messages: tuple[Message, ...]
     checkpoint: str | None
     coverage_gap: bool = False
+    stream_ready: bool = True
 
 
 @dataclass(frozen=True, slots=True)
