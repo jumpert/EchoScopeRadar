@@ -364,7 +364,9 @@ class Radar:
                 observations = tuple(
                     item
                     for item in observations
-                    if item.matches or item.message.kind == Kind.PRESS_COMMENT
+                    if item.matches
+                    or item.message.kind == Kind.PRESS_COMMENT
+                    or (current.source.type == "press_feed" and item.message.kind == Kind.REVIEW)
                 )
             snapshot = replace(
                 current,
@@ -543,7 +545,10 @@ class Radar:
                         or any(not match.confirmed for match in item.observation.matches)
                     )
                     and (query.kind is None or item.observation.message.kind == query.kind)
-                    and (query.exclude_kind is None or item.observation.message.kind != query.exclude_kind)
+                    and (
+                        query.exclude_kind is None
+                        or item.observation.message.kind != query.exclude_kind
+                    )
                     and (
                         query.category is None
                         or category(item.observation.message.kind, item.observation.message.origin)

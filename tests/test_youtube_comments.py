@@ -121,6 +121,7 @@ async def test_youtube_search_threads_and_replies_via_http(monkeypatch):
             "reply-b",
         ]
         assert all(item.kind == Kind.COMMENT for item in batches[0].messages)
+        assert batches[0].messages[0].url.endswith("v=01234567890&lc=parent")
         assert batches[0].coverage_gap
         assert calls == ["search", "commentThreads", "comments"]
         videos = await find_videos("Defensa Uruguay", credential, live=True)

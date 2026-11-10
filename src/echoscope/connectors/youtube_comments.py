@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import aiohttp
 from pydantic import Field
@@ -112,7 +112,7 @@ def _message(item, resource):
         resource,
         body,
         snippet.get("authorDisplayName"),
-        url=f"https://www.youtube.com/watch?v={resource}",
+        url=f"https://www.youtube.com/watch?{urlencode({'v': resource, 'lc': item['id']})}",
         published_at=parse_date(snippet.get("publishedAt")),
     )
 

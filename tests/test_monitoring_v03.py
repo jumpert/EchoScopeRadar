@@ -81,6 +81,7 @@ async def test_press_only_discovers_on_topic_and_tracks_comments_after_304(monke
     article = "https://example.com/nota"
     feed = "https://example.com/noticias.xml"
     comments = "https://example.com/comentarios.xml"
+    reviews = "https://example.com/resenas.xml"
     seen = []
 
     async def fetch(self, request):
@@ -108,23 +109,34 @@ async def test_press_only_discovers_on_topic_and_tracks_comments_after_304(monke
         else:
             assert request.source.credential is None
             yield Batch(
-                (Message(Kind.PRESS_COMMENT, "rss:example.com", "c", comments, "Comentario"),),
+                (
+                    Message(
+                        Kind(request.source.params["kind"]),
+                        "rss:example.com",
+                        endpoint,
+                        endpoint,
+                        "Opinión",
+                    ),
+                ),
                 "child-v1",
             )
 
     async def discover(link):
         assert link == article
-        return comments
+        return [(comments, "PRESS_COMMENT"), (reviews, "REVIEW")]
 
     monkeypatch.setattr("echoscope.connectors.press_feed.Feed.poll", fetch)
-    monkeypatch.setattr("echoscope.connectors.press_feed.discover_comment_feed", discover)
+    monkeypatch.setattr("echoscope.connectors.press_feed.discover_discussion_feeds", discover)
     source = Source(id="press", type="press_feed", params={"url": feed, "kind": "NEWS_ARTICLE"})
     request = Request(source, None, 15, (Rule("army", "Ejército"),))
     first = [batch async for batch in PressFeed().poll(request)]
     second = [
         batch async for batch in PressFeed().poll(replace(request, checkpoint=first[-1].checkpoint))
     ]
-    assert [item.url for batch in second for item in batch.messages] == [article]
+    assert [(item.kind, item.resource_id) for batch in second for item in batch.messages] == [
+        (Kind.PRESS_COMMENT, article),
+        (Kind.REVIEW, article),
+    ]
     assert (comments, "child-v1") in seen
 
 

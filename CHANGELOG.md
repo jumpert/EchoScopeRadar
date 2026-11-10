@@ -1,5 +1,12 @@
 # Historial de versiones
 
+## 0.6.0
+
+- Enlaces al origen en los flujos, las alertas, la búsqueda y el reporte. Los comentarios de YouTube capturados en esta versión enlazan a su comentario cuando el proveedor lo permite.
+- Conversaciones junto a los resultados de búsqueda. Lee feeds de comentarios y reseñas anunciados por medios, comentarios y chats de YouTube y respuestas públicas de Bluesky. Distingue ventanas parciales y fuentes sin acceso.
+- Perfil de Uruguay ampliado con la diaria, Brecha, Caras y Caretas y Teledoce. Brave Search agrega descubrimiento regional e indexación de publicaciones públicas en redes.
+- Exportación de alertas confirmadas por fechas a PDF, con enlaces, detalle por registro y métricas por sitio. El detalle de YouTube figura por separado de las métricas.
+
 ## 0.5.0
 
 - Modo proyección con pantalla completa cuando el navegador lo admite. Conserva los flujos y la bandeja de alertas.

@@ -1,4 +1,5 @@
 from echoscope.application.ports import ConnectorType
+from echoscope.connectors.bluesky import BlueskyParams, BlueskyThread
 from echoscope.connectors.press_feed import PressFeed
 from echoscope.connectors.simulated import SimParams, Simulator
 from echoscope.connectors.syndication import Feed, FeedParams
@@ -13,6 +14,7 @@ def registry() -> dict[str, ConnectorType]:
         ConnectorType("sim_live", "stream", SimParams, Simulator, simulated=True),
         ConnectorType("syndication", "poll", FeedParams, Feed, ("bearer",), min_interval_s=60),
         ConnectorType("press_feed", "poll", FeedParams, PressFeed, ("bearer",), min_interval_s=60),
+        ConnectorType("bluesky_thread", "poll", BlueskyParams, BlueskyThread, min_interval_s=60),
         ConnectorType(
             "youtube_channel",
             "poll",

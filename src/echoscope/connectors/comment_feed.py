@@ -13,6 +13,7 @@ class CommentFeedLinks(HTMLParser):
         super().__init__()
         self.page = page
         self.links = []
+        self.reviews = []
 
     def handle_starttag(self, tag, attributes):
         if tag != "link":
@@ -34,9 +35,12 @@ class CommentFeedLinks(HTMLParser):
         if "comment" in title or "comentario" in title or path.endswith("/comments/feed"):
             if url not in self.links:
                 self.links.append(url)
+        elif "review" in title or "reseña" in title or path.endswith("/reviews/feed"):
+            if url not in self.reviews:
+                self.reviews.append(url)
 
 
-async def discover_comment_feed(page):
+async def discover_discussion_feeds(page):
     parser = CommentFeedLinks(public_url(page))
     try:
         async with (
@@ -69,4 +73,13 @@ async def discover_comment_feed(page):
     except (aiohttp.ClientError, TimeoutError):
         raise Transient() from None
     parser.feed(bytes(header[: 256 * 1024]).decode("utf-8", errors="replace").split("</head", 1)[0])
-    return parser.links[0] if parser.links else None
+    return [(url, "PRESS_COMMENT") for url in parser.links] + [
+        (url, "REVIEW") for url in parser.reviews
+    ]
+
+
+async def discover_comment_feed(page):
+    return next(
+        (url for url, kind in await discover_discussion_feeds(page) if kind == "PRESS_COMMENT"),
+        None,
+    )

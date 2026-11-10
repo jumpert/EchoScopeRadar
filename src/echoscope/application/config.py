@@ -70,7 +70,7 @@ class Configuration(StrictModel):
     sources: list[Source] = Field(max_length=100)
     jobs: list[Job] = Field(max_length=100)
     rule_sets: dict[str, list[RuleSpec]]
-    desktop_profile: Literal[1] | None = None
+    desktop_profile: Literal[1, 2] | None = None
 
     @model_validator(mode="after")
     def references(self):

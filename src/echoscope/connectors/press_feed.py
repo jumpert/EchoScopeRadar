@@ -8,7 +8,7 @@ from echoscope.application.ports import ConnectorError, Request, Transient
 from echoscope.domain.models import Batch, Kind
 from echoscope.domain.rules import evaluate
 
-from .comment_feed import discover_comment_feed
+from .comment_feed import discover_discussion_feeds
 from .syndication import Feed
 
 
@@ -37,29 +37,49 @@ class PressFeed:
 
         # Bound discovery and follow-up traffic. URLs and validators survive a 304 on the main RSS.
         state["targets"] = targets = dict(list(targets.items())[-12:])
-        pending = [(url, target) for url, target in targets.items() if not target["checked"]]
+        pending = [
+            (url, target) for url, target in targets.items() if not target.get("discussion_checked")
+        ]
         for article, target in pending[:2]:
             try:
-                candidate = await asyncio.wait_for(discover_comment_feed(article), timeout=4)
+                candidates = await asyncio.wait_for(discover_discussion_feeds(article), timeout=4)
             except (Transient, TimeoutError):
                 continue
             except (ConnectorError, ValueError):
-                target["checked"] = True
+                target["discussion_checked"] = True
             else:
-                target["checked"] = True
-                if candidate and _site(candidate) == _site(article):
-                    target["feed"] = candidate
+                target["discussion_checked"] = True
+                for field, kind in (("feed", Kind.PRESS_COMMENT), ("review_feed", Kind.REVIEW)):
+                    candidate = next(
+                        (
+                            url
+                            for url, value in candidates
+                            if kind == value and _site(url) == _site(article)
+                        ),
+                        None,
+                    )
+                    if candidate and candidate != target.get(field):
+                        target[field] = candidate
+                        target.pop("cursor" if field == "feed" else "review_cursor", None)
             yield Batch((), json.dumps(state))
 
-        active = [(url, target) for url, target in targets.items() if target["feed"]]
+        active = [
+            (url, target, target[field], kind, cursor)
+            for url, target in targets.items()
+            for field, kind, cursor in (
+                ("feed", Kind.PRESS_COMMENT, "cursor"),
+                ("review_feed", Kind.REVIEW, "review_cursor"),
+            )
+            if target.get(field)
+        ]
         start = state.get("offset", 0) % max(1, len(active))
         for offset in range(min(2, len(active))):
-            article, target = active[(start + offset) % len(active)]
+            article, target, endpoint, kind, cursor = active[(start + offset) % len(active)]
             # Never send credentials from the main feed to a discovered endpoint.
             source = request.source.model_copy(
                 update={
                     "credential": None,
-                    "params": {"url": target["feed"], "kind": Kind.PRESS_COMMENT.value},
+                    "params": {"url": endpoint, "kind": kind.value},
                 }
             )
             try:
@@ -68,16 +88,17 @@ class PressFeed:
                         replace(
                             request,
                             source=source,
-                            checkpoint=target["cursor"],
+                            checkpoint=target.get(cursor),
                             timeout_s=min(8, request.timeout_s),
                         )
                     )
                 ) as reader:
                     async for batch in reader:
-                        target["cursor"] = batch.checkpoint
+                        target[cursor] = batch.checkpoint
                         yield Batch(
                             tuple(
-                                replace(item, url=item.url or article) for item in batch.messages
+                                replace(item, resource_id=article, url=item.url or article)
+                                for item in batch.messages
                             ),
                             json.dumps(state),
                         )

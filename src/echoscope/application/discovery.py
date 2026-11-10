@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 import aiohttp
 
 from echoscope.connectors.syndication import Feed
+from echoscope.connectors.youtube_comments import video_id
 from echoscope.domain.models import category
 from echoscope.domain.tone import folded
 
@@ -15,6 +16,7 @@ from .administration import RSS_TYPES, YOUTUBE_KEY
 from .ports import AuthRequired, ConnectorError, RateLimited, Request, Transient
 
 BRAVE_KEY = "ECHOSCOPE_BRAVE_KEY"
+SOCIAL_DOMAINS = ("facebook.com", "instagram.com", "x.com", "tiktok.com", "reddit.com", "bsky.app")
 
 
 def public_result_url(url):
@@ -29,12 +31,31 @@ def public_result_url(url):
     return None
 
 
-async def search_web(terms, key):
+def indexed_candidate(url):
+    host = urlsplit(url).hostname
+    try:
+        identifier = video_id(url)
+    except ValueError:
+        kind = (
+            "social"
+            if any(host == domain or host.endswith(f".{domain}") for domain in SOCIAL_DOMAINS)
+            else "web"
+        )
+        return url, host, kind
+    return f"https://www.youtube.com/watch?v={identifier}", "YouTube", "video"
+
+
+async def search_web(terms, key, *, social=False):
+    query = (
+        f"{terms} Uruguay AND (" + " OR ".join(f"site:{domain}" for domain in SOCIAL_DOMAINS) + ")"
+        if social
+        else f"{terms} loc:uy"
+    )
     async with (
         aiohttp.ClientSession(trust_env=False, timeout=aiohttp.ClientTimeout(total=10)) as session,
         session.get(
             "https://api.search.brave.com/res/v1/web/search",
-            params={"q": terms, "count": 12, "search_lang": "es", "text_decorations": "false"},
+            params={"q": query, "count": 20, "search_lang": "es", "text_decorations": "false"},
             headers={"X-Subscription-Token": key, "Accept": "application/json"},
             allow_redirects=False,
         ) as response,
@@ -50,12 +71,14 @@ async def search_web(terms, key):
         {
             "title": item.get("title", "")[:300],
             "url": url,
-            "source": urlsplit(url).hostname,
+            "source": host,
             "excerpt": item.get("description", "")[:500],
-            "kind": "web",
+            "kind": kind,
         }
-        for item in data.get("web", {}).get("results", [])[:12]
-        if (url := public_result_url(item.get("url", "")))
+        for item in data.get("web", {}).get("results", [])[:20]
+        if (address := public_result_url(item.get("url", "")))
+        for url, host, kind in (indexed_candidate(address),)
+        if not social or kind == "social"
     ]
 
 
@@ -155,6 +178,7 @@ class TopicDiscovery:
             notes.append("Cargá una clave de YouTube para descubrir videos y directos.")
         if key := os.environ.get(BRAVE_KEY):
             providers.append(("Web abierta", search_web(terms, key)))
+            providers.append(("Redes sociales públicas", search_web(terms, key, social=True)))
         else:
             notes.append(
                 "Cargá una clave de Brave Search para ampliar la consulta a la web abierta."

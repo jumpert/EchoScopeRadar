@@ -1,5 +1,5 @@
 version: 1
-desktop_profile: 1
+desktop_profile: 2
 sources:
   - id: telenoche
     type: press_feed
@@ -23,6 +23,22 @@ sources:
     params: {channel: UCeeEsGE06kae6DF-yOGT9Tw}
     credential: {kind: api_key, env: ECHOSCOPE_YOUTUBE_KEY}
     retention_days: 7
+  - id: la-diaria
+    type: press_feed
+    label: la diaria
+    params: {url: 'https://ladiaria.com.uy/feeds/articulos/', kind: NEWS_ARTICLE}
+  - id: brecha
+    type: press_feed
+    label: Brecha
+    params: {url: 'https://brecha.com.uy/feed/', kind: NEWS_ARTICLE}
+  - id: caras-caretas
+    type: press_feed
+    label: Caras y Caretas
+    params: {url: 'https://www.carasycaretas.com.uy/rss/pages/home.xml', kind: NEWS_ARTICLE}
+  - id: teledoce
+    type: press_feed
+    label: Teledoce
+    params: {url: 'https://www.teledoce.com/feed/', kind: NEWS_ARTICLE}
   - id: vtv-youtube
     type: youtube_channel
     label: VTV Noticias · Videos
@@ -45,6 +61,10 @@ jobs:
   - {id: montevideo-portal, source: montevideo-portal, interval_s: 900, rule_set: defensa, relevant_only: true}
   - {id: el-observador, source: el-observador, interval_s: 900, rule_set: defensa, relevant_only: true}
   - {id: ejercito-youtube, source: ejercito-youtube, interval_s: 1800, rule_set: defensa}
+  - {id: la-diaria, source: la-diaria, interval_s: 900, rule_set: defensa, relevant_only: true}
+  - {id: brecha, source: brecha, interval_s: 900, rule_set: defensa, relevant_only: true}
+  - {id: caras-caretas, source: caras-caretas, interval_s: 900, rule_set: defensa, relevant_only: true}
+  - {id: teledoce, source: teledoce, interval_s: 900, rule_set: defensa, relevant_only: true}
   - {id: vtv-youtube, source: vtv-youtube, interval_s: 1800, rule_set: defensa}
   - {id: ejercito-directos, source: ejercito-directos, interval_s: 3600, rule_set: defensa}
   - {id: vtv-directos, source: vtv-directos, interval_s: 3600, rule_set: defensa}

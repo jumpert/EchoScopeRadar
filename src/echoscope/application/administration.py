@@ -5,6 +5,7 @@ from importlib.resources import as_file, files
 from uuid import uuid4
 
 from echoscope.bootstrap import registry
+from echoscope.connectors.bluesky import BlueskyParams
 from echoscope.connectors.comment_feed import discover_comment_feed
 from echoscope.connectors.syndication import public_url
 from echoscope.connectors.youtube_channel import channel_reference
@@ -22,6 +23,7 @@ SOURCE_TYPES = {
     "Comentarios de un sitio (RSS)": ("syndication", "PRESS_COMMENT"),
     "Reseñas de un sitio (RSS/Atom)": ("syndication", "REVIEW"),
     "Foro o comunidad (RSS/Atom)": ("syndication", "FORUM_POST"),
+    "Respuestas de una publicación de Bluesky": ("bluesky_thread", "SOCIAL_COMMENT"),
     "Comentarios de un video de YouTube": ("youtube_comments", "COMMENT"),
     "Chat de un directo de YouTube": ("youtube_live", "LIVE_CHAT"),
     "Canal de YouTube · videos automáticos": ("youtube_channel", "YOUTUBE_VIDEO"),
@@ -78,6 +80,32 @@ def upgrade_desktop_profile(config):
     )
 
 
+def expand_national_profile(config):
+    if config.desktop_profile == 2 or RULE_SET not in config.rule_sets:
+        return config
+    if not {"telenoche", "subrayado", "montevideo-portal", "el-observador"}.intersection(
+        source.id for source in config.sources
+    ):
+        return config
+    preset = _example("defensa-uruguay.yaml")
+    known = {item.id for item in (*config.sources, *config.jobs)}
+    urls = {source.params.get("url") for source in config.sources}
+    additions = {"la-diaria", "brecha", "caras-caretas", "teledoce"}
+    sources = [
+        source
+        for source in preset.sources
+        if source.id in additions - known and source.params["url"] not in urls
+    ]
+    ids = {source.id for source in sources}
+    return config.model_copy(
+        update={
+            "desktop_profile": 2,
+            "sources": [*config.sources, *sources],
+            "jobs": [*config.jobs, *(job for job in preset.jobs if job.source in ids)],
+        }
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SourceForm:
     label: str
@@ -115,6 +143,9 @@ class SourceForm:
                 if self.token_env.strip()
                 else None
             )
+        elif connector == "bluesky_thread":
+            params = BlueskyParams(url=self.address).model_dump()
+            credential = None
         elif connector in CHANNEL_TYPES:
             params = {"channel": channel_reference(self.address)}
             credential = Credential(kind="api_key", env=YOUTUBE_KEY)
@@ -189,6 +220,13 @@ class Administration:
                     else:
                         config = upgrade_desktop_profile(config)
                     config = Configuration.model_validate(config.model_dump())
+                    validate_config(config, self.connectors)
+                    await self.store.configure(config)
+                if (
+                    not self.practice
+                    and (expanded := expand_national_profile(config)) is not config
+                ):
+                    config = Configuration.model_validate(expanded.model_dump())
                     validate_config(config, self.connectors)
                     await self.store.configure(config)
             except BaseException:

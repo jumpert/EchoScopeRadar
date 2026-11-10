@@ -43,8 +43,18 @@ async def test_discovery_uses_active_feeds_and_both_youtube_queries(monkeypatch)
             None,
         )
 
-    async def brave(terms, _key):
-        queries.append(terms)
+    async def brave(terms, _key, *, social=False):
+        queries.append(("brave", terms, social))
+        if social:
+            return [
+                {
+                    "title": "Publicación pública",
+                    "url": "https://bsky.app/profile/demo.bsky.social/post/example",
+                    "source": "Bluesky",
+                    "excerpt": "",
+                    "kind": "social",
+                }
+            ]
         raise RateLimited()
 
     monkeypatch.setenv("ECHOSCOPE_YOUTUBE_KEY", "test")
@@ -64,7 +74,7 @@ async def test_discovery_uses_active_feeds_and_both_youtube_queries(monkeypatch)
     )
     discovery = TopicDiscovery(SimpleNamespace(practice=False, search=youtube))
     candidates, notes = await discovery.search("ejercito uruguay", config)
-    assert [item["kind"] for item in candidates] == ["article", "live", "video"]
+    assert [item["kind"] for item in candidates] == ["article", "live", "video", "social"]
     assert any("LÍMITE DE CONSUMO" in note for note in notes)
     assert ("ejercito uruguay", True) in queries and ("ejercito uruguay", False) in queries
     assert "inactivo" not in queries

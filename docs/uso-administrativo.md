@@ -12,7 +12,7 @@ Para practicar, abrí **Probar EchoScope Radar.cmd**. Usa una base separada y ar
 
 ## Organizar la mesa
 
-- Usá los botones de flujo sobre la mesa para mostrar u ocultar **Chat en vivo**, **Comentarios de prensa**, **Reseñas**, **Noticias**, **Videos de YouTube** y **Foros**.
+- Usá los botones de flujo sobre la mesa para mostrar u ocultar **Chat en vivo**, **Comentarios de prensa**, **Reseñas**, **Noticias**, **Videos de YouTube**, **Foros** y **Redes sociales**.
 - En cada cabecera, usá **Maximizar** para dar todo el ancho a ese flujo y **Restaurar vista** para volver a la distribución anterior. El control **Ocultar** retira el panel de la mesa.
 - Arrastrá el control de puntos de un panel sobre otro para cambiar su posición. El menú **↔** permite moverlo y ajustar su ancho sin arrastrar. Usá **Paneles por fila** para cambiar la cantidad de columnas y **↺** para recuperar la distribución inicial. El navegador recuerda tus ajustes.
 - Elegí **Proyección** o presioná **P** fuera de los campos de texto. Se ocultan los controles generales para dar más espacio a paneles y alertas. Si el navegador mantiene visibles sus barras, usá **F11**. Volvé con **Esc** o **Salir de proyección**.
@@ -21,7 +21,7 @@ Para practicar, abrí **Probar EchoScope Radar.cmd**. Usa una base separada y ar
 
 ## Búsqueda automática
 
-El perfil inicial consulta Telenoche, Subrayado, Montevideo Portal y El Observador. Para las notas pertinentes busca feeds de comentarios anunciados por el propio medio. La disponibilidad de los comentarios depende del acceso que publique cada sitio.
+El perfil inicial consulta Telenoche, Subrayado, Montevideo Portal, El Observador, la diaria, Brecha, Caras y Caretas y Teledoce. Para las notas pertinentes busca feeds de comentarios anunciados por el propio medio. La disponibilidad de comentarios y reseñas depende del acceso que publique cada sitio.
 
 Cuando cargás la clave de YouTube, el perfil consulta los canales de **Ejército del Uruguay** y **VTV Noticias**. Revisa videos recientes y busca directos activos relacionados con el tema. Las consultas se programan según la fuente. Los videos se revisan cada 30 minutos y los directos cada 60 minutos en el perfil inicial. Podés ajustar los intervalos en **Fuentes**.
 
@@ -29,7 +29,13 @@ Cuando cargás la clave de YouTube, el perfil consulta los canales de **Ejércit
 
 En la mesa elegí **Buscar por tema**, escribí palabras como `Ejército Uruguay` y presioná **Buscar**. Se consulta el historial local y la ventana actual de hasta 18 feeds habilitados. Con la clave de YouTube también se buscan videos y directos por tema. Para ampliar la búsqueda a sitios públicos indexados, cargá una clave de Brave Search en **Tema y acceso**. YouTube y Brave reciben el tema para ejecutar la consulta y pueden aplicar cuotas. También podés proporcionar las claves mediante `ECHOSCOPE_YOUTUBE_KEY` y `ECHOSCOPE_BRAVE_KEY` antes del arranque.
 
-En un video elegí **Seguir comentarios**, en un directo **Seguir chat**, o en una nota **Buscar comentarios**. EchoScope rellena el enlace cuando encuentra una fuente compatible. Revisá los datos y guardá el seguimiento. Encontrar una publicación permite abrirla. Para leer su conversación, el proveedor debe ofrecer un feed de comentarios anunciado o un chat accesible por API.
+EchoScope consulta automáticamente la conversación de hasta dos resultados compatibles por grupo. Abrí **Comentarios y reseñas** o **Chat en vivo** en cualquier otro resultado para consultarlo. Podés seguir el video, directo, hilo de Bluesky o feed desde la misma tarjeta para incorporar mensajes nuevos a la mesa. Los enlaces llevan a la publicación o al comentario que entrega la fuente.
+
+Brave Search agrega resultados regionales y publicaciones públicas indexadas en redes. En Bluesky se pueden leer las respuestas públicas de un hilo. Para Facebook, Instagram, X, TikTok y Reddit se ofrece el enlace de las publicaciones indexadas. Para leer en EchoScope, el proveedor debe entregar mensajes mediante una API integrada o un RSS/Atom accesible. Un contador refleja la ventana recibida, y la mesa indica cuando la cobertura es parcial.
+
+## Descargar un reporte de alertas
+
+En la mesa elegí **Descargar PDF**, seleccioná las fechas de captura en UTC y presioná **Generar PDF**. Incluye coincidencias confirmadas del historial retenido y de las vistas previas aún disponibles en la sesión. El resumen muestra registros, conversaciones y alertas críticas por sitio. El detalle incluye fecha, tipo, término y enlaces. Los sitios y feeds incluyen un extracto y tono estimado cuando están disponibles. YouTube aparece como un listado de alertas locales con su enlace original.
 
 ## Agregar contenido
 
@@ -43,6 +49,7 @@ En un video elegí **Seguir comentarios**, en un directo **Seguir chat**, o en u
 | Un chat de YouTube en directo | Pegá el enlace en **Chat de un directo de YouTube**. El chat debe estar activo y habilitado. El panel lo identifica como **solo sesión**. |
 | Un canal de YouTube | Elegí **Canal de YouTube · videos automáticos** o **directos automáticos**. Pegá el enlace del canal o su `@nombre`. |
 | Un foro o comunidad | Elegí **Foro o comunidad (RSS/Atom)** y pegá el enlace autorizado. Desde entonces se consulta automáticamente. |
+| Un hilo público de Bluesky | Elegí **Respuestas de una publicación de Bluesky** y pegá el enlace al post. Las respuestas aparecen en **Redes sociales**. |
 
 Si el medio te entrega un token Bearer para un feed protegido, ingresalo en el campo **Token del feed**. Cargá las claves y los tokens en los campos de la aplicación. Sus valores se usan durante esa sesión.
 

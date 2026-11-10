@@ -9,11 +9,13 @@ import secrets
 import sys
 import webbrowser
 from dataclasses import asdict, replace
+from datetime import UTC, date, datetime, time
 from importlib.metadata import version
 from importlib.resources import files
 from pathlib import Path
 from time import monotonic
 from typing import Literal
+from urllib.parse import urlsplit
 
 from aiohttp import web
 from platformdirs import user_data_path
@@ -27,10 +29,15 @@ from echoscope.application.administration import (
     SourceForm,
 )
 from echoscope.application.config import StrictModel
+from echoscope.application.conversations import Conversations
 from echoscope.application.discovery import BRAVE_KEY, TopicDiscovery, public_result_url
 from echoscope.application.ports import AuthRequired, ConnectorError, StorageUnavailable
-from echoscope.domain.models import HistoryQuery, Kind, category
+from echoscope.connectors.youtube_comments import VIDEO_ID
+from echoscope.domain.models import HistoryQuery, Kind, Message, Observation, Result, category
+from echoscope.domain.rules import evaluate
 from echoscope.domain.tone import message_tone
+
+from .report import report_pdf
 
 PANELS = {
     "news": HistoryQuery(category="news"),
@@ -39,6 +46,7 @@ PANELS = {
     "live": HistoryQuery(category="live"),
     "forum": HistoryQuery(category="forum"),
     "reviews": HistoryQuery(kind=Kind.REVIEW),
+    "social": HistoryQuery(category="social"),
 }
 ASSETS = {
     "/": ("index.html", "text/html"),
@@ -79,10 +87,23 @@ class DiscoveryInput(StrictModel):
     value: str = Field(min_length=1, max_length=200)
 
 
+class ConversationInput(StrictModel):
+    kind: Literal["article", "web", "video", "live", "social"]
+    url: str = Field(min_length=1, max_length=2048)
+
+
+class ReportInput(StrictModel):
+    start: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    end: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
 class Workspace:
     def __init__(self, path, practice, auto_start):
         self.service = Administration(path, practice)
         self.discovery = TopicDiscovery(self.service)
+        self.conversations = Conversations()
+        self.recent_discoveries = {}
+        self.report_guard = asyncio.Lock()
         self.practice = practice
         self.auto_start = auto_start
         self.authority = None
@@ -176,6 +197,14 @@ def fragments(text, matches):
     return result
 
 
+def resource_link(message):
+    if message.origin.startswith("youtube:") and VIDEO_ID.fullmatch(message.resource_id):
+        return f"https://www.youtube.com/watch?v={message.resource_id}"
+    if message.kind in {Kind.PRESS_COMMENT, Kind.REVIEW, Kind.FORUM_POST, Kind.SOCIAL_COMMENT}:
+        return safe_url(message.resource_id) or safe_url(message.url)
+    return safe_url(message.url)
+
+
 def result_data(result, sources):
     message = result.observation.message
     matches = result.observation.matches
@@ -200,9 +229,12 @@ def result_data(result, sources):
         "date": (message.published_at or message.captured_at).isoformat(),
         "captured": message.captured_at.isoformat(),
         "url": safe_url(message.url or ""),
+        "resource_url": resource_link(message),
+        "provider": "YouTube" if message.origin.startswith("youtube:") else None,
         "tone": message_tone(message.text),
         "fragments": fragments(message.text, matches),
         "severity": severity,
+        "confirmed_terms": list(dict.fromkeys(m.canonical or m.term for m in confirmed)),
         "matches": [
             list(item) for item in dict.fromkeys((m.term, m.canonical, m.method) for m in matches)
         ],
@@ -210,8 +242,10 @@ def result_data(result, sources):
 
 
 def source_categories(source):
+    if source.type == "bluesky_thread":
+        return ["social"]
     if source.type == "press_feed":
-        return ["news", "press"]
+        return ["news", "press", "reviews"]
     if source.type in {"youtube_live", "youtube_channel_live", "sim_live"}:
         return ["live"]
     if source.type in {"youtube_comments", "youtube_channel"}:
@@ -227,7 +261,9 @@ def config_data(config):
     jobs = []
     for job in config.jobs:
         source = sources[job.source]
-        kind = source.params.get("kind", "NEWS_ARTICLE")
+        kind = source.params.get(
+            "kind", "SOCIAL_COMMENT" if source.type == "bluesky_thread" else "NEWS_ARTICLE"
+        )
         pair = (source.type, "PRESS_COMMENT" if kind == "COMMENT" else kind)
         label = next(
             (
@@ -401,6 +437,14 @@ async def action(request):
     elif name == "topic-search":
         terms = DiscoveryInput.model_validate(data).value.strip()
         candidates, notes = await state.discovery.search(terms, state.config)
+        for candidate in candidates:
+            if (item := discovery_record(state, candidate)) is not None:
+                candidate["alert"] = result_data(item, {})
+                address = candidate["url"]
+                state.recent_discoveries.pop(address, None)
+                state.recent_discoveries[address] = item
+                if len(state.recent_discoveries) > 200:
+                    del state.recent_discoveries[next(iter(state.recent_discoveries))]
         names = {item.id: item.label or item.id for item in state.config.sources}
         history = await service.messages(HistoryQuery(text=terms, limit=25))
         return web.json_response(
@@ -410,6 +454,26 @@ async def action(request):
                 "history": [result_data(item, names) for item in history],
             }
         )
+    elif name == "conversation":
+        fields = ConversationInput.model_validate(data)
+        url = safe_url(fields.url)
+        if not url or not url.startswith("https://"):
+            raise ValueError("Se requiere un enlace HTTPS público.")
+        if state.practice:
+            return web.json_response(
+                {"messages": [], "feeds": [], "status": "Modo de práctica.", "partial": False}
+            )
+        result = await state.conversations.read(fields.kind, url)
+        return web.json_response(
+            {
+                "messages": [result_data(item, {}) for item in preview_results(state, url, result)],
+                "feeds": result.feeds,
+                "status": result.status,
+                "partial": result.partial,
+            }
+        )
+    elif name == "report":
+        return await export_report(state, ReportInput.model_validate(data))
     elif name == "search":
         return web.json_response(
             {
@@ -424,6 +488,107 @@ async def action(request):
     else:
         raise web.HTTPNotFound()
     return web.json_response(config_data(state.config))
+
+
+def active_rules(state):
+    return tuple(spec.compile() for spec in next(iter(state.config.rule_sets.values()), []))
+
+
+def discovery_record(state, candidate):
+    kind = {
+        "live": Kind.YOUTUBE_LIVE,
+        "video": Kind.YOUTUBE_VIDEO,
+        "article": Kind.NEWS_ARTICLE,
+        "web": Kind.FEED_ENTRY,
+        "social": Kind.FEED_ENTRY,
+    }.get(candidate["kind"])
+    url = safe_url(candidate["url"])
+    if kind is None or url is None:
+        return None
+    body = "\n".join(part for part in (candidate["title"], candidate["excerpt"]) if part)
+    matches = evaluate(body, active_rules(state))
+    if not any(match.confirmed for match in matches):
+        return None
+    origin = (
+        "youtube:discovery" if kind in {Kind.YOUTUBE_VIDEO, Kind.YOUTUBE_LIVE} else "search:index"
+    )
+    message = Message(kind, origin, url, url, body, url=url)
+    return Result(-1, "preview", candidate["source"], Observation(message, matches))
+
+
+def preview_results(state, url, conversation):
+    rules = active_rules(state)
+    source = urlsplit(url).hostname or "Vista previa"
+    return [
+        Result(-(index + 1), "preview", source, Observation(message, evaluate(message.text, rules)))
+        for index, message in enumerate(conversation.messages)
+    ]
+
+
+async def export_report(state, fields):
+    try:
+        start = date.fromisoformat(fields.start)
+        end = date.fromisoformat(fields.end)
+    except ValueError:
+        raise ValueError("Elegí fechas válidas.") from None
+    if start > end:
+        raise ValueError("La fecha inicial debe ser anterior o igual a la final.")
+    if state.report_guard.locked():
+        raise ValueError("Ya se está preparando un reporte.")
+    async with state.report_guard:
+        since = datetime.combine(start, time.min, UTC)
+        until = min(datetime.combine(end, time.max, UTC), datetime.now(UTC))
+        query = HistoryQuery(since=since, until=until, matches_only=True, limit=500)
+        sources = {source.id: source.label or source.id for source in state.config.sources}
+        records = []
+        seen = set()
+
+        def collect(items):
+            for item in items:
+                message = item.observation.message
+                if message.url and message.kind in {
+                    Kind.NEWS_ARTICLE,
+                    Kind.FEED_ENTRY,
+                    Kind.YOUTUBE_VIDEO,
+                    Kind.YOUTUBE_LIVE,
+                }:
+                    key = ("publication", message.url)
+                else:
+                    key = (message.origin, message.external_id, message.text)
+                if (
+                    key not in seen
+                    and since <= message.captured_at <= until
+                    and any(m.confirmed for m in item.observation.matches)
+                ):
+                    seen.add(key)
+                    records.append(result_data(item, sources))
+                    if len(records) > 5000:
+                        raise ValueError(
+                            "El período supera los 5.000 registros. Elegí un intervalo más corto."
+                        )
+
+        while True:
+            page = await state.service.store.messages(query)
+            collect(page)
+            if len(page) < query.limit:
+                break
+            query = replace(query, before=page[-1].id)
+        radar = state.service.radar
+        if radar:
+            for identifier in tuple(radar.session):
+                collect(await radar.messages(replace(query, job_id=identifier, before=None)))
+        for (_, url), (_, discussion) in tuple(state.conversations.cache.items()):
+            collect(preview_results(state, url, discussion))
+        collect(tuple(state.recent_discoveries.values()))
+        records.sort(key=lambda item: item["captured"], reverse=True)
+        body = await asyncio.to_thread(report_pdf, records, start, end, state.practice)
+    return web.Response(
+        body=body,
+        content_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="EchoScope-alertas-{start}-{end}.pdf"'
+        },
+    )
 
 
 async def asset(request):

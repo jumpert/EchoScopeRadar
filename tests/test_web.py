@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime
 
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -74,6 +75,12 @@ async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path):
         search = await client.post("/api/topic-search", json={"value": "atención"}, headers=headers)
         discovery = await search.json()
         assert search.status == 200 and discovery["candidates"] == [] and discovery["history"]
+        today = datetime.now(UTC).date().isoformat()
+        report = await client.post(
+            "/api/report", json={"start": today, "end": today}, headers=headers
+        )
+        assert report.status == 200 and report.content_type == "application/pdf"
+        assert (await report.read()).startswith(b"%PDF-")
         assert all(item["kind"] == "REVIEW" for item in data["panels"]["reviews"])
         assert all(item["kind"] != "REVIEW" for item in data["panels"]["press"])
         assert any(mark for item in data["panels"]["press"] for _, mark in item["fragments"])

@@ -17,6 +17,7 @@ class Kind(StrEnum):
     YOUTUBE_LIVE = "YOUTUBE_LIVE"
     FORUM_POST = "FORUM_POST"
     PRESS_COMMENT = "PRESS_COMMENT"
+    SOCIAL_COMMENT = "SOCIAL_COMMENT"
 
 
 class State(StrEnum):
@@ -117,6 +118,7 @@ def category(kind: Kind, origin: str) -> str:
         Kind.FORUM_POST: "forum",
         Kind.PRESS_COMMENT: "press",
         Kind.REVIEW: "press",
+        Kind.SOCIAL_COMMENT: "social",
     }[kind]
 
 

@@ -115,7 +115,7 @@ class SourceDialog(tk.Toplevel):
         self.resizable(False, False)
         self.grab_set()
         current_kind = (source.type, source.params.get("kind", "NEWS_ARTICLE")) if source else None
-        if source and source.type.startswith("youtube_"):
+        if source and (source.type.startswith("youtube_") or source.type == "bluesky_thread"):
             current_kind = next(spec for spec in SOURCE_TYPES.values() if spec[0] == source.type)
         if current_kind == ("syndication", "COMMENT"):
             current_kind = "syndication", "PRESS_COMMENT"
@@ -248,7 +248,11 @@ class SourceDialog(tk.Toplevel):
                 if connector in CHANNEL_TYPES
                 else "video o directo de YouTube"
             )
-            self.note.set(f"Enlace del {address}. Cargá la clave en Tema y acceso.")
+            self.note.set(
+                "Enlace público de una publicación de Bluesky."
+                if connector == "bluesky_thread"
+                else f"Enlace del {address}. Cargá la clave en Tema y acceso."
+            )
             self.token_group.grid_remove()
             self.discover_button.pack_forget()
         if event:

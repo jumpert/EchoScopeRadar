@@ -4,10 +4,12 @@ const $ = (id) => document.getElementById(id);
 const labels = {
   live: "Chat en vivo", press: "Comentarios de prensa", reviews: "Reseñas",
   news: "Noticias", youtube: "Videos de YouTube", forum: "Foros",
+  social: "Redes sociales",
 };
 const names = {
   COMMENT: "Comentario", REVIEW: "Reseña", LIVE_CHAT: "Chat en vivo", FEED_ENTRY: "Publicación",
   NEWS_ARTICLE: "Noticia", YOUTUBE_VIDEO: "Video", YOUTUBE_LIVE: "Directo", FORUM_POST: "Foro", PRESS_COMMENT: "Comentario de prensa",
+  SOCIAL_COMMENT: "Respuesta en red social",
 };
 const severity = { info: "Info", important: "Importante", critical: "Crítica", review: "Para revisar" };
 const tones = {
@@ -44,6 +46,15 @@ function button(text, className, callback, title) {
   }
   element.addEventListener("click", callback);
   return element;
+}
+
+function originLink(url, label = null, className = "origin-link") {
+  const link = node("a", className, label ?? `${new URL(url).hostname.replace(/^www\./, "")} ↗`);
+  link.href = url;
+  link.title = url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  return link;
 }
 
 function preference(key, fallback) {
@@ -285,9 +296,15 @@ function showDetails(item) {
   $("details-matches").replaceChildren(...item.matches.map(([raw, canonical, method]) =>
     node("li", "", `${method === "review" ? "Para revisar · " : ""}${raw}${canonical ? ` → ${canonical}` : ""}`)
   ));
-  $("details-link").hidden = !item.url;
-  if (item.url) $("details-link").href = item.url;
-  else $("details-link").removeAttribute("href");
+  const links = $("details-origins");
+  links.replaceChildren();
+  if (item.url) links.append(originLink(item.url));
+  if (item.resource_url && item.resource_url !== item.url) links.append(originLink(item.resource_url, "Publicación relacionada ↗"));
+  $("details-conversation").replaceChildren();
+  const kind = { NEWS_ARTICLE: "article", YOUTUBE_VIDEO: "video", YOUTUBE_LIVE: "live" }[item.kind];
+  if (kind && item.url?.startsWith("https://") && !ui.practice) {
+    $("details-conversation").append(conversationPanel({ kind, url: item.url, title: item.source, source: item.source }).box);
+  }
   $("details").showModal();
 }
 
@@ -295,7 +312,8 @@ function replaceRecords(container, rows, makeRow, emptyText) {
   const first = Array.from(container.children).find((row) => row.offsetTop + row.offsetHeight > container.scrollTop);
   const anchor = first && container.scrollTop > 0 ? first.dataset.record : null;
   const offset = anchor ? container.scrollTop - first.offsetTop : 0;
-  const selected = container.contains(document.activeElement) ? document.activeElement.dataset.record : null;
+  const active = document.activeElement;
+  const selected = container.contains(active) ? active.closest("[data-record]")?.dataset.record : null;
   const children = rows.map((row) => {
     const control = makeRow(row);
     control.dataset.record = String(row.id);
@@ -306,7 +324,18 @@ function replaceRecords(container, rows, makeRow, emptyText) {
     const row = children.find((item) => item.dataset.record === anchor);
     if (row) container.scrollTop = row.offsetTop + offset;
   }
-  if (selected) children.find((item) => item.dataset.record === selected)?.focus({ preventScroll: true });
+  if (selected) {
+    const row = children.find((item) => item.dataset.record === selected);
+    const control = row?.querySelector(active.tagName === "A" ? "a" : "button") ?? row;
+    control?.focus({ preventScroll: true });
+  }
+}
+
+function withOrigin(control, item) {
+  if (!item.url) return control;
+  const row = node("div", "linked-record");
+  row.append(control, originLink(item.url));
+  return row;
 }
 
 function renderPanel(key, rows, statuses) {
@@ -332,7 +361,7 @@ function renderPanel(key, rows, statuses) {
     text.append(node("span", "author", item.author || item.source));
     richText(text, item.fragments);
     control.append(text);
-    return control;
+    return withOrigin(control, item);
   }, applicable.length ? "Todavía no hay resultados para este filtro." : "Agregá una fuente para empezar a seguir este flujo.");
 }
 
@@ -356,7 +385,7 @@ function renderAlerts(rows) {
       summary.append(mark);
     }
     control.append(label, node("span", "record-time", time.format(new Date(item.captured))), toneBadge(item.tone), summary);
-    return control;
+    return withOrigin(control, item);
   }, ui.alertMode === "review" ? "Sin coincidencias aproximadas." : "Sin alertas confirmadas para este filtro.");
 }
 
@@ -445,7 +474,7 @@ function sourceFields() {
   const feed = type.includes("RSS");
   const comments = type.startsWith("Comentarios de un sitio");
   $("address-label").textContent = feed ? (comments ? "Enlace del feed o de la nota" : "Enlace HTTPS al RSS/Atom") :
-    (type.startsWith("Canal") ? "Enlace o @nombre del canal de YouTube" : "Enlace del video o directo");
+    (type.includes("Bluesky") ? "Enlace de la publicación de Bluesky" : type.startsWith("Canal") ? "Enlace o @nombre del canal de YouTube" : "Enlace del video o directo");
   $("discover").hidden = !comments;
   $("feed-token").hidden = !feed;
   const minutes = $("source-minutes");
@@ -629,56 +658,99 @@ $("web-key-form").addEventListener("submit", async (event) => {
 
 const discoveryGroups = {
   live: "Directos en YouTube", video: "Videos de YouTube", article: "Noticias en feeds",
-  feed: "Comentarios, foros y reseñas en feeds", web: "Sitios de la web abierta",
+  feed: "Comentarios, foros y reseñas en feeds", web: "Sitios uruguayos en la web abierta",
+  social: "Publicaciones públicas de redes sociales",
 };
 
-function candidateCard(item) {
+function conversationPanel(item) {
+  const box = node("details", "conversation");
+  const label = item.kind === "live" ? "Chat en vivo" : "Comentarios y reseñas";
+  const summary = node("summary", "", label);
+  const feedback = node("p", "metadata", "Abrí esta sección para consultar la conversación.");
+  feedback.setAttribute("role", "status");
+  const list = node("div", "conversation-messages");
+  const actions = node("div", "discovery-actions");
+  let loading = false;
+  let loaded = false;
+  const load = async (force = false) => {
+    if (loading || (loaded && !force)) return;
+    loading = true;
+    feedback.textContent = "Consultando la conversación…";
+    try {
+      const data = await api("conversation", { kind: item.kind, url: item.url });
+      const count = data.messages.length;
+      summary.textContent = `${label} · ${count ? count : data.status ? "Ver estado" : "Sin mensajes"}`;
+      feedback.textContent = [count ? `${count} mensajes recuperados.` : "Sin mensajes recuperados.", data.status,
+        data.partial ? "Cobertura parcial. Podés seguir la fuente para recibir mensajes nuevos." : ""].filter(Boolean).join(" ");
+      list.replaceChildren(...data.messages.map((message) => {
+        const row = node("article", "conversation-message");
+        const meta = node("div", "conversation-meta");
+        meta.append(toneBadge(message.tone), node("span", "", `${names[message.kind] ?? "Mensaje"} · ${message.author || "Autor no informado"} · ${detailTime.format(new Date(message.date))}`));
+        if (message.url) meta.append(originLink(message.url));
+        const body = node("p", "");
+        richText(body, message.fragments);
+        row.append(meta, body);
+        return row;
+      }));
+      actions.replaceChildren(...data.feeds.map(([url, kind]) => button(kind === "REVIEW" ? "Seguir reseñas" : "Seguir comentarios", "button subtle", () => showSource({
+        name: (item.title || item.source).slice(0, 80), address: url,
+        type_label: kind === "REVIEW" ? "Reseñas de un sitio (RSS/Atom)" : "Comentarios de un sitio (RSS)",
+      }))));
+      actions.append(button("Volver a consultar", "text-button", () => load(true)));
+      if (count) box.open = true;
+      loaded = true;
+    } catch (error) {
+      feedback.textContent = error.message;
+      actions.replaceChildren(button("Volver a consultar", "text-button", () => load(true)));
+    } finally { loading = false; }
+  };
+  box.append(summary, feedback, actions, list);
+  box.addEventListener("toggle", () => { if (box.open) load(); });
+  return { box, load };
+}
+
+function candidateCard(item, queue) {
   const card = node("article", "discovery-result");
   card.append(node("h4", "", item.title || "Resultado"), node("p", "metadata", item.source));
-  if (item.excerpt) card.append(node("p", "", item.excerpt));
+  if (item.alert) {
+    const highlights = node("p", "");
+    richText(highlights, item.alert.fragments);
+    card.append(highlights);
+  } else if (item.excerpt) card.append(node("p", "", item.excerpt));
   if (!item.url) return card;
   const actions = node("div", "discovery-actions");
-  const link = node("a", "button subtle", "Abrir ↗");
-  link.href = item.url;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  actions.append(link);
+  actions.append(originLink(item.url));
+  card.append(actions);
   const source = { name: (item.title || item.source).slice(0, 80), address: item.url };
   if (item.kind === "live" || item.kind === "video") {
     actions.append(button(item.kind === "live" ? "Seguir chat" : "Seguir comentarios", "button subtle", () => {
       showSource({ ...source, type_label: item.kind === "live" ? "Chat de un directo de YouTube" : "Comentarios de un video de YouTube" });
     }));
-  } else if (["article", "web"].includes(item.kind) && item.url.startsWith("https://")) {
-    const feedback = node("p", "metadata");
-    feedback.setAttribute("role", "status");
-    const discover = button("Buscar comentarios", "button subtle", async () => {
-      discover.disabled = true;
-      feedback.textContent = "Comprobando si el sitio publica un feed de comentarios…";
-      try {
-        const data = await api("discover", { value: item.url });
-        if (data.url) {
-          feedback.textContent = "Feed de comentarios encontrado.";
-          showSource({ ...source, address: data.url, type_label: "Comentarios de un sitio (RSS)" });
-        } else feedback.textContent = "El sitio no anuncia un feed público de comentarios.";
-      } catch (error) { feedback.textContent = error.message; }
-      finally { discover.disabled = false; }
-    });
-    actions.append(discover);
-    card.append(actions, feedback);
-    return card;
   }
-  card.append(actions);
+  const bluesky = item.kind === "social" && /^https:\/\/bsky\.app\/profile\/[^/]+\/post\//.test(item.url);
+  if (bluesky) {
+    actions.append(button("Seguir respuestas", "button subtle", () => showSource({ ...source, type_label: "Respuestas de una publicación de Bluesky" })));
+  }
+  if (item.kind === "social" && !bluesky) {
+    card.append(node("p", "metadata", "Publicación indexada. Abrí el enlace para ver la conversación en la plataforma."));
+  } else if ((bluesky || ["article", "web", "video", "live"].includes(item.kind)) && item.url.startsWith("https://")) {
+    const discussion = conversationPanel(item);
+    card.append(discussion.box);
+    if (queue) queue.push(discussion);
+    if (item.kind === "live") card.append(conversationPanel({ ...item, kind: "video" }).box);
+  }
   return card;
 }
 
 function renderDiscovery(data) {
   const results = $("topic-search-results");
   const groups = [];
+  const queue = [];
   for (const [kind, label] of Object.entries(discoveryGroups)) {
     const candidates = data.candidates.filter((item) => item.kind === kind);
     if (!candidates.length) continue;
     const section = node("section", "discovery-group");
-    section.append(node("h3", "", `${label} · ${candidates.length}`), ...candidates.map(candidateCard));
+    section.append(node("h3", "", `${label} · ${candidates.length}`), ...candidates.map((item, index) => candidateCard(item, index < 2 ? queue : null)));
     groups.push(section);
   }
   if (data.history.length) {
@@ -690,7 +762,7 @@ function renderDiscovery(data) {
       const excerpt = item.fragments.map(([part]) => part).join("").slice(0, 100);
       text.textContent = `${item.source} · ${excerpt || "Abrir mensaje"}`;
       control.append(toneBadge(item.tone), text);
-      section.append(control);
+      section.append(withOrigin(control, item));
     }
     groups.unshift(section);
   }
@@ -706,9 +778,45 @@ function renderDiscovery(data) {
   results.replaceChildren(...groups);
   const total = data.candidates.length + data.history.length;
   $("topic-search-status").textContent = total ? `${total} resultados en las fuentes consultadas.` : "Sin resultados en las fuentes consultadas.";
+  const loadNext = async () => {
+    while (queue.length && $("topic-search-dialog").open && queue[0].box.isConnected) await queue.shift().load();
+  };
+  for (let worker = 0; worker < 3; worker++) loadNext();
 }
 
 $("open-topic-search").addEventListener("click", () => $("topic-search-dialog").showModal());
+$("open-report").addEventListener("click", () => {
+  if (!$('report-start').value) $('report-start').value = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+  if (!$('report-end').value) $('report-end').value = new Date().toISOString().slice(0, 10);
+  $("report-status").textContent = "";
+  $("report-dialog").showModal();
+});
+$("report-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = event.submitter;
+  if (submit) submit.disabled = true;
+  const start = $("report-start").value;
+  const end = $("report-end").value;
+  $("report-status").textContent = "Generando reporte…";
+  try {
+    const response = await fetch("/api/report", {
+      method: "POST", headers: { "Content-Type": "application/json", "X-EchoScope-Token": ui.token },
+      body: JSON.stringify({ start, end }), signal: AbortSignal.timeout(90000),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || "No se pudo generar el PDF.");
+    }
+    const address = URL.createObjectURL(await response.blob());
+    const link = node("a", "");
+    link.href = address;
+    link.download = `EchoScope-alertas-${start}-${end}.pdf`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(address), 10000);
+    $("report-status").textContent = "PDF generado. Revisá las descargas del navegador.";
+  } catch (error) { $("report-status").textContent = error.message; }
+  finally { if (submit) submit.disabled = false; }
+});
 $("topic-search-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const submit = $("topic-search-form").querySelector("button[type=submit]");
@@ -768,6 +876,7 @@ $("shutdown").addEventListener("click", async () => {
     applyConfig(data, true);
     buildLayout();
     $("open-topic-search").disabled = false;
+    $("open-report").disabled = false;
     toggleAlerts();
     await tick();
   } catch (error) {

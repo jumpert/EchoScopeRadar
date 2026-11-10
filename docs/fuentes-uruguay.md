@@ -1,5 +1,13 @@
 # Fuentes uruguayas · Perfil Defensa
 
+## Ampliación en 0.6.0
+
+El perfil suma cuatro feeds que entregaron entradas en la verificación directa. [la diaria](https://ladiaria.com.uy/feeds/articulos/) · [Brecha](https://brecha.com.uy/feed/) · [Caras y Caretas](https://www.carasycaretas.com.uy/rss/pages/home.xml) · [Teledoce](https://www.teledoce.com/feed/)
+
+Brave Search amplía la búsqueda a sitios uruguayos indexados y publicaciones públicas de redes sociales cuando se carga su clave. La app puede leer respuestas públicas de un hilo de Bluesky. La prueba real recuperó una ventana de 120 respuestas. Para otros servicios, la disponibilidad de sus comentarios depende de un conector autorizado. [Publicación de prueba en Bluesky](https://bsky.app/profile/bsky.app/post/3lahjxmqajk2p)
+
+## Fuentes originales
+
 El perfil inicia con cuatro RSS públicos de noticias y busca coincidencias en los titulares y resúmenes que publica cada medio. El resultado depende de la ventana que entrega el RSS en cada consulta.
 
 | Fuente | Resultado de la comprobación inicial del 9 de noviembre de 2026 |

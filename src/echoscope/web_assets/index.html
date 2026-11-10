@@ -37,6 +37,7 @@
         <div class="heading-actions">
           <button id="restore-layout" class="button subtle" type="button" hidden>↙ Restaurar vista</button>
           <button id="open-topic-search" class="button primary" type="button" disabled>Buscar por tema</button>
+          <button id="open-report" class="button subtle" type="button" disabled>Descargar PDF</button>
           <button id="enter-projection" class="button subtle" type="button" title="Modo proyección (P)">⤢ Proyección</button>
         </div>
       </div>
@@ -99,7 +100,20 @@
   <dialog id="details" aria-labelledby="details-title">
     <div class="dialog-head"><div><p class="eyebrow" id="details-type">RESULTADO</p><h2 id="details-title">Detalle</h2></div><button type="button" class="icon-button" data-close="details" aria-label="Cerrar detalle">×</button></div>
     <p class="metadata" id="details-meta"></p><p id="details-tone" class="detail-tone"></p><div id="details-text" class="detail-text"></div><ul id="details-matches" class="detail-matches"></ul>
-    <div class="dialog-actions"><a id="details-link" class="button primary" target="_blank" rel="noopener noreferrer" hidden>Abrir publicación ↗</a><button type="button" class="button subtle" data-close="details">Cerrar</button></div>
+    <div id="details-origins" class="discovery-actions"></div>
+    <div id="details-conversation"></div>
+    <div class="dialog-actions"><button type="button" class="button subtle" data-close="details">Cerrar</button></div>
+  </dialog>
+
+  <dialog id="report-dialog" aria-labelledby="report-title">
+    <div class="dialog-head"><div><p class="eyebrow">EXPORTACIÓN</p><h2 id="report-title">Reporte de alertas</h2></div><button type="button" class="icon-button" data-close="report-dialog" aria-label="Cerrar reporte">×</button></div>
+    <p class="metadata">Incluye enlaces y alertas confirmadas del historial disponible y de las vistas previas de esta sesión. Las fechas corresponden a la captura (UTC).</p>
+    <form id="report-form" class="source-form">
+      <label for="report-start">Desde</label><input type="date" id="report-start" required>
+      <label for="report-end">Hasta</label><input type="date" id="report-end" required>
+      <p id="report-status" class="feedback" role="status"></p>
+      <div class="dialog-actions"><button class="button primary" type="submit">Generar PDF</button><button class="button subtle" type="button" data-close="report-dialog">Cancelar</button></div>
+    </form>
   </dialog>
 
   <dialog id="source-dialog" aria-labelledby="source-title">
