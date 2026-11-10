@@ -9,7 +9,7 @@ import aiohttp
 
 from echoscope.connectors.syndication import Feed
 from echoscope.connectors.youtube_comments import video_id
-from echoscope.domain.models import category
+from echoscope.domain.models import category, publication_title
 from echoscope.domain.tone import folded
 
 from .administration import RSS_TYPES, YOUTUBE_KEY
@@ -121,13 +121,14 @@ class TopicDiscovery:
         for message in messages:
             if not words.issubset(re.findall(r"\w+", folded(message.text))):
                 continue
-            title, _, excerpt = message.text.partition("\n")
+            title = publication_title(message)
+            excerpt = message.text.removeprefix(title).lstrip("\n") if title else message.text
             results.append(
                 {
                     "title": title[:300],
                     "url": public_result_url(message.url or ""),
                     "source": source.label or source.id,
-                    "excerpt": excerpt[:500],
+                    "excerpt": excerpt,
                     "kind": "article"
                     if category(message.kind, message.origin) == "news"
                     else "feed",
@@ -143,7 +144,7 @@ class TopicDiscovery:
                 "title": item.title,
                 "url": f"https://www.youtube.com/watch?v={item.id}",
                 "source": item.channel or "YouTube",
-                "excerpt": "",
+                "excerpt": item.description,
                 "kind": "live" if live else "video",
             }
             for item in await self.service.search(terms, live=live)

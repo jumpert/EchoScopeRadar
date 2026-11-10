@@ -4,6 +4,7 @@ import threading
 import tkinter as tk
 import webbrowser
 from importlib.metadata import version
+from importlib.resources import files
 from pathlib import Path
 from tkinter import messagebox, ttk
 from urllib.parse import urlsplit
@@ -829,6 +830,12 @@ def main():
         "practica.sqlite" if args.demo else "administracion.sqlite"
     )
     root = tk.Tk()
+    root.iconphoto(
+        True,
+        tk.PhotoImage(
+            data=files("echoscope").joinpath("web_assets", "ciberdefensa.png").read_bytes()
+        ),
+    )
     Desktop(root, path, args.demo)
     root.mainloop()
 

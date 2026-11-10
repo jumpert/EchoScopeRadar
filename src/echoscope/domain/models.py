@@ -56,6 +56,23 @@ class Message:
     url: str | None = None
     published_at: datetime | None = None
     captured_at: datetime = field(default_factory=utcnow)
+    title: str | None = None
+
+
+def publication_title(message: Message) -> str:
+    if message.title is not None:
+        return message.title
+    if message.kind in {
+        Kind.NEWS_ARTICLE,
+        Kind.FEED_ENTRY,
+        Kind.YOUTUBE_VIDEO,
+        Kind.YOUTUBE_LIVE,
+        Kind.FORUM_POST,
+    }:
+        first, separator, _ = message.text.partition("\n")
+        if len(first) <= 300 and (separator or message.origin.startswith("youtube:")):
+            return first
+    return ""
 
 
 @dataclass(frozen=True, slots=True)

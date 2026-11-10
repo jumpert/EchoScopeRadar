@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath (Join-Path $PSScriptRoot '..')
 $env:UV_PROJECT_ENVIRONMENT = Join-Path (Get-Location) '.cache/windows-build-venv'
 $migrations = Join-Path (Get-Location) 'src/echoscope/storage/migrations'
+$icon = Join-Path (Get-Location) 'src/echoscope/web_assets/ciberdefensa.png'
 $versionLine = Select-String -LiteralPath 'pyproject.toml' -Pattern '^version = "([0-9]+\.[0-9]+\.[0-9]+)"$'
 $version = $versionLine.Matches[0].Groups[1].Value
 $release = Join-Path (Get-Location) "dist/$version"
@@ -9,6 +10,7 @@ $package = Join-Path $release 'EchoScopeRadar'
 uv sync --locked --extra youtube --extra windows-build
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 uv run --no-sync pyinstaller --noconfirm --windowed --name EchoScopeRadar `
+    --icon $icon `
     --paths src --collect-data echoscope --collect-data alembic --copy-metadata echoscope-radar `
     --hidden-import sqlalchemy.dialects.sqlite.aiosqlite --hidden-import sqlalchemy.dialects.sqlite.pysqlite `
     --hidden-import sqlalchemy.ext.asyncio --hidden-import aiosqlite --hidden-import grpc `

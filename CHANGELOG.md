@@ -1,5 +1,10 @@
 # Historial de versiones
 
+## 0.6.1
+
+- Titulares separados del contenido y hasta tres fragmentos alrededor de las coincidencias. La mesa, la búsqueda y las conversaciones conservan el enlace al original.
+- Escudo de la Unidad de Ciberdefensa del Ejército y paleta verde, dorada y azul en la interfaz web.
+
 ## 0.6.0
 
 - Enlaces al origen en los flujos, las alertas, la búsqueda y el reporte. Los comentarios de YouTube capturados en esta versión enlazan a su comentario cuando el proveedor lo permite.

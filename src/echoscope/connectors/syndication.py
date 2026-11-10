@@ -211,6 +211,7 @@ def parse_feed(body: bytes, params: FeedParams) -> tuple[Message, ...]:
                     author,
                     url=link,
                     published_at=parse_date(published),
+                    title=title.strip(),
                 )
             )
     return tuple(messages)

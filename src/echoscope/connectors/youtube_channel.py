@@ -106,6 +106,7 @@ class YouTubeChannel(_Channel):
                         body,
                         url=f"https://www.youtube.com/watch?v={identifier}",
                         published_at=parse_date(snippet.get("publishedAt")),
+                        title=snippet.get("title") or "",
                     )
                 )
             if any(match.confirmed for match in matches):
@@ -162,6 +163,7 @@ class YouTubeChannelLive(_Channel):
                         body,
                         url=f"https://www.youtube.com/watch?v={identifier}",
                         published_at=parse_date(snippet.get("publishedAt")),
+                        title=snippet.get("title") or "",
                     ),
                 ),
                 request.checkpoint,

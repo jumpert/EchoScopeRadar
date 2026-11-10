@@ -275,6 +275,21 @@ function richText(container, fragments) {
   }
 }
 
+function appendContext(parent, item, tag = "span") {
+  if (item.fragments?.length) {
+    const excerpt = node(tag, "match-context");
+    richText(excerpt, item.fragments);
+    parent.append(excerpt);
+  }
+}
+
+function appendTitle(parent, item, tag = "strong", fallback = "") {
+  if (!item.title && !fallback) return;
+  const title = node(tag, "publication-title");
+  richText(title, item.title_fragments?.length ? item.title_fragments : [[item.title || fallback, null]]);
+  parent.append(title);
+}
+
 function toneBadge(tone, full = false) {
   const value = Object.hasOwn(tones, tone) ? tone : "neutral";
   const [symbol, label] = tones[value];
@@ -288,11 +303,13 @@ function toneBadge(tone, full = false) {
 
 function showDetails(item) {
   $("details-type").textContent = names[item.kind] ?? "Resultado";
-  $("details-title").textContent = item.source;
-  $("details-meta").textContent = [detailTime.format(new Date(item.date)), item.author].filter(Boolean).join(" · ");
+  $("details-title").replaceChildren();
+  appendTitle($("details-title"), item, "span", item.source);
+  $("details-meta").textContent = [item.title ? item.source : null, detailTime.format(new Date(item.date)), item.author].filter(Boolean).join(" · ");
   $("details-tone").replaceChildren(node("span", "", "Tono estimado "), toneBadge(item.tone, true));
   $("details-text").replaceChildren();
-  richText($("details-text"), item.fragments);
+  if (item.fragments.length) appendContext($("details-text"), item);
+  else $("details-text").textContent = "Sin coincidencias en el cuerpo.";
   $("details-matches").replaceChildren(...item.matches.map(([raw, canonical, method]) =>
     node("li", "", `${method === "review" ? "Para revisar · " : ""}${raw}${canonical ? ` → ${canonical}` : ""}`)
   ));
@@ -303,7 +320,7 @@ function showDetails(item) {
   $("details-conversation").replaceChildren();
   const kind = { NEWS_ARTICLE: "article", YOUTUBE_VIDEO: "video", YOUTUBE_LIVE: "live" }[item.kind];
   if (kind && item.url?.startsWith("https://") && !ui.practice) {
-    $("details-conversation").append(conversationPanel({ kind, url: item.url, title: item.source, source: item.source }).box);
+    $("details-conversation").append(conversationPanel({ kind, url: item.url, title: item.title || item.source, source: item.source }).box);
   }
   $("details").showModal();
 }
@@ -358,8 +375,9 @@ function renderPanel(key, rows, statuses) {
     const control = button("", "record", () => showDetails(item));
     control.append(node("span", "record-time", time.format(new Date(item.date))), toneBadge(item.tone));
     const text = node("span", "record-body");
+    appendTitle(text, item);
     text.append(node("span", "author", item.author || item.source));
-    richText(text, item.fragments);
+    appendContext(text, item);
     control.append(text);
     return withOrigin(control, item);
   }, applicable.length ? "Todavía no hay resultados para este filtro." : "Agregá una fuente para empezar a seguir este flujo.");
@@ -378,6 +396,7 @@ function renderAlerts(rows) {
     label.dataset.level = level;
     const terms = [...new Set(item.matches.filter((match) => (match[2] === "review") === (ui.alertMode === "review")).map((match) => match[0]))];
     const summary = node("span", "alert-summary");
+    appendTitle(summary, item);
     summary.append(node("span", "alert-source", item.source));
     for (const term of terms) {
       const mark = node("mark", "alert-term", term);
@@ -687,9 +706,9 @@ function conversationPanel(item) {
         const meta = node("div", "conversation-meta");
         meta.append(toneBadge(message.tone), node("span", "", `${names[message.kind] ?? "Mensaje"} · ${message.author || "Autor no informado"} · ${detailTime.format(new Date(message.date))}`));
         if (message.url) meta.append(originLink(message.url));
-        const body = node("p", "");
-        richText(body, message.fragments);
-        row.append(meta, body);
+        appendTitle(row, message, "h5");
+        row.append(meta);
+        appendContext(row, message, "p");
         return row;
       }));
       actions.replaceChildren(...data.feeds.map(([url, kind]) => button(kind === "REVIEW" ? "Seguir reseñas" : "Seguir comentarios", "button subtle", () => showSource({
@@ -711,12 +730,9 @@ function conversationPanel(item) {
 
 function candidateCard(item, queue) {
   const card = node("article", "discovery-result");
-  card.append(node("h4", "", item.title || "Resultado"), node("p", "metadata", item.source));
-  if (item.alert) {
-    const highlights = node("p", "");
-    richText(highlights, item.alert.fragments);
-    card.append(highlights);
-  } else if (item.excerpt) card.append(node("p", "", item.excerpt));
+  appendTitle(card, item, "h4", item.source || "Resultado");
+  if (item.title) card.append(node("p", "metadata", item.source));
+  appendContext(card, item, "p");
   if (!item.url) return card;
   const actions = node("div", "discovery-actions");
   actions.append(originLink(item.url));
@@ -758,9 +774,10 @@ function renderDiscovery(data) {
     section.append(node("h3", "", `Historial de EchoScope · ${data.history.length}`));
     for (const item of data.history) {
       const control = button("", "discovery-result discovery-history", () => showDetails(item));
-      const text = node("span", "");
-      const excerpt = item.fragments.map(([part]) => part).join("").slice(0, 100);
-      text.textContent = `${item.source} · ${excerpt || "Abrir mensaje"}`;
+      const text = node("span", "record-body");
+      appendTitle(text, item);
+      text.append(node("span", "author", item.source));
+      appendContext(text, item);
       control.append(toneBadge(item.tone), text);
       section.append(withOrigin(control, item));
     }

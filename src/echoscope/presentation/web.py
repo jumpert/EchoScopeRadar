@@ -5,9 +5,11 @@ import asyncio
 import hmac
 import json
 import os
+import re
 import secrets
 import sys
 import webbrowser
+from bisect import bisect_left, bisect_right
 from dataclasses import asdict, replace
 from datetime import UTC, date, datetime, time
 from importlib.metadata import version
@@ -33,7 +35,15 @@ from echoscope.application.conversations import Conversations
 from echoscope.application.discovery import BRAVE_KEY, TopicDiscovery, public_result_url
 from echoscope.application.ports import AuthRequired, ConnectorError, StorageUnavailable
 from echoscope.connectors.youtube_comments import VIDEO_ID
-from echoscope.domain.models import HistoryQuery, Kind, Message, Observation, Result, category
+from echoscope.domain.models import (
+    HistoryQuery,
+    Kind,
+    Message,
+    Observation,
+    Result,
+    category,
+    publication_title,
+)
 from echoscope.domain.rules import evaluate
 from echoscope.domain.tone import message_tone
 
@@ -52,8 +62,9 @@ ASSETS = {
     "/": ("index.html", "text/html"),
     "/app.css": ("app.css", "text/css"),
     "/app.js": ("app.js", "text/javascript"),
-    "/radar.svg": ("radar.svg", "image/svg+xml"),
+    "/ciberdefensa.png": ("ciberdefensa.png", "image/png"),
 }
+WORDS = re.compile(r"\S+")
 
 
 class SourceInput(StrictModel):
@@ -197,6 +208,68 @@ def fragments(text, matches):
     return result
 
 
+def marked_slice(text, matches, start, end):
+    return fragments(
+        text[start:end],
+        [
+            replace(match, start=max(match.start, start) - start, end=min(match.end, end) - start)
+            for match in matches
+            if match.start < end and match.end > start
+        ],
+    )
+
+
+def match_context(text, matches, body_start):
+    body_matches = [
+        replace(match, start=max(match.start, body_start))
+        for match in matches
+        if 0 <= match.start < match.end <= len(text) and match.end > body_start
+    ]
+    if not body_matches:
+        return []
+    words = list(WORDS.finditer(text, pos=body_start))
+    starts = [word.start() for word in words]
+    ends = [word.end() for word in words]
+    windows = []
+    for match in sorted(body_matches, key=lambda match: (not match.confirmed, match.start)):
+        first = bisect_right(ends, match.start)
+        last = bisect_left(starts, match.end)
+        left = max(0, first - 6, bisect_left(starts, match.start - 84))
+        right = min(len(words), last + 6, bisect_right(ends, match.end + 84))
+        start = min(match.start, starts[left]) if left < len(starts) else match.start
+        end = max(match.end, ends[right - 1]) if right else match.end
+        if any(start < old_end and end > old_start for old_start, old_end in windows):
+            continue
+        windows.append((start, end))
+        if len(windows) == 3:
+            break
+    contexts = []
+    for start, end in sorted(windows):
+        if contexts:
+            contexts.append(["\n", None])
+        if text[body_start:start].strip():
+            contexts.append(["… ", None])
+        contexts.extend(marked_slice(text, body_matches, start, end))
+        if text[end:].strip():
+            contexts.append([" …", None])
+    return contexts
+
+
+def publication_display(message, matches):
+    title = publication_title(message)
+    if title and message.text.startswith(title):
+        header = marked_slice(message.text, matches, 0, len(title))
+        body_start = len(title)
+    else:
+        header = [[title, None]] if title else []
+        body_start = 0
+    return {
+        "title": title,
+        "title_fragments": header,
+        "fragments": match_context(message.text, matches, body_start),
+    }
+
+
 def resource_link(message):
     if message.origin.startswith("youtube:") and VIDEO_ID.fullmatch(message.resource_id):
         return f"https://www.youtube.com/watch?v={message.resource_id}"
@@ -205,7 +278,7 @@ def resource_link(message):
     return safe_url(message.url)
 
 
-def result_data(result, sources):
+def result_data(result, sources, *, report=False):
     message = result.observation.message
     matches = result.observation.matches
     confirmed = [item for item in matches if item.confirmed]
@@ -232,7 +305,11 @@ def result_data(result, sources):
         "resource_url": resource_link(message),
         "provider": "YouTube" if message.origin.startswith("youtube:") else None,
         "tone": message_tone(message.text),
-        "fragments": fragments(message.text, matches),
+        **(
+            {"fragments": fragments(message.text, matches)}
+            if report
+            else publication_display(message, matches)
+        ),
         "severity": severity,
         "confirmed_terms": list(dict.fromkeys(m.canonical or m.term for m in confirmed)),
         "matches": [
@@ -437,19 +514,29 @@ async def action(request):
     elif name == "topic-search":
         terms = DiscoveryInput.model_validate(data).value.strip()
         candidates, notes = await state.discovery.search(terms, state.config)
+        projected = []
         for candidate in candidates:
+            display = {key: value for key, value in candidate.items() if key != "excerpt"}
             if (item := discovery_record(state, candidate)) is not None:
-                candidate["alert"] = result_data(item, {})
+                display.update(
+                    publication_display(item.observation.message, item.observation.matches)
+                )
                 address = candidate["url"]
-                state.recent_discoveries.pop(address, None)
-                state.recent_discoveries[address] = item
-                if len(state.recent_discoveries) > 200:
-                    del state.recent_discoveries[next(iter(state.recent_discoveries))]
+                if (
+                    address
+                    and candidate["kind"] != "feed"
+                    and any(m.confirmed for m in item.observation.matches)
+                ):
+                    state.recent_discoveries.pop(address, None)
+                    state.recent_discoveries[address] = item
+                    if len(state.recent_discoveries) > 200:
+                        del state.recent_discoveries[next(iter(state.recent_discoveries))]
+            projected.append(display)
         names = {item.id: item.label or item.id for item in state.config.sources}
         history = await service.messages(HistoryQuery(text=terms, limit=25))
         return web.json_response(
             {
-                "candidates": candidates,
+                "candidates": projected,
                 "notes": notes,
                 "history": [result_data(item, names) for item in history],
             }
@@ -501,18 +588,17 @@ def discovery_record(state, candidate):
         "article": Kind.NEWS_ARTICLE,
         "web": Kind.FEED_ENTRY,
         "social": Kind.FEED_ENTRY,
+        "feed": Kind.FEED_ENTRY,
     }.get(candidate["kind"])
     url = safe_url(candidate["url"])
-    if kind is None or url is None:
+    if kind is None:
         return None
     body = "\n".join(part for part in (candidate["title"], candidate["excerpt"]) if part)
     matches = evaluate(body, active_rules(state))
-    if not any(match.confirmed for match in matches):
-        return None
     origin = (
         "youtube:discovery" if kind in {Kind.YOUTUBE_VIDEO, Kind.YOUTUBE_LIVE} else "search:index"
     )
-    message = Message(kind, origin, url, url, body, url=url)
+    message = Message(kind, origin, url or "", url or "", body, url=url, title=candidate["title"])
     return Result(-1, "preview", candidate["source"], Observation(message, matches))
 
 
@@ -561,7 +647,7 @@ async def export_report(state, fields):
                     and any(m.confirmed for m in item.observation.matches)
                 ):
                     seen.add(key)
-                    records.append(result_data(item, sources))
+                    records.append(result_data(item, sources, report=True))
                     if len(records) > 5000:
                         raise ValueError(
                             "El período supera los 5.000 registros. Elegí un intervalo más corto."
@@ -594,7 +680,9 @@ async def export_report(state, fields):
 async def asset(request):
     name, mime = ASSETS[request.path]
     body = files("echoscope").joinpath("web_assets", name).read_bytes()
-    return web.Response(body=body, content_type=mime, charset="utf-8")
+    return web.Response(
+        body=body, content_type=mime, charset=None if mime == "image/png" else "utf-8"
+    )
 
 
 def create_app(path, *, practice=False, auto_start=True):

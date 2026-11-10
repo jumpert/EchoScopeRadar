@@ -56,6 +56,7 @@ Si el medio te entrega un token Bearer para un feed protegido, ingresalo en el c
 ## Interpretar los resultados
 
 - **Notas** son publicaciones del medio. **Comentarios** y **Chats en vivo** identifican mensajes de lectores y espectadores.
+- El titular se muestra separado. En el cuerpo se ven hasta tres fragmentos alrededor de las coincidencias; los puntos suspensivos indican texto omitido. Usá el enlace de origen para abrir el contenido completo cuando esté disponible.
 - El término que disparó la alerta se resalta en el mensaje y en la bandeja. El símbolo junto al mensaje indica el tono estimado en español: **＋** positivo, **−** negativo, **±** mixto y **·** neutro. Es una estimación por vocabulario, con precisión limitada en ironía y lenguaje ambiguo. El tono y la severidad se muestran por separado.
 - Las fuentes con filtro temático guardan solo coincidencias. En un video que ya elegiste por el tema, podés dejar ese filtro desactivado para ver todos los comentarios de la ventana consultada.
 - **Cobertura parcial** indica que la fuente entregó una ventana limitada, faltaron respuestas o hubo un hueco durante la captura. La búsqueda muestra la ventana disponible y el historial local.

@@ -3,8 +3,9 @@ from datetime import UTC, datetime
 
 from aiohttp.test_utils import TestClient, TestServer
 
-from echoscope.domain.models import Match, Severity
-from echoscope.presentation.web import KEY, create_app, fragments, safe_url
+from echoscope.domain.models import Kind, Match, Message, Severity
+from echoscope.domain.rules import Rule, evaluate
+from echoscope.presentation.web import KEY, create_app, fragments, publication_display, safe_url
 
 
 def test_highlights_use_original_unicode_offsets_and_reject_active_links():
@@ -22,6 +23,22 @@ def test_highlights_use_original_unicode_offsets_and_reject_active_links():
     assert safe_url("https://example.com/articulo") == "https://example.com/articulo"
 
 
+def test_publications_keep_title_separate_and_omit_unrelated_body():
+    title = "Defensa presenta un informe"
+    body = "intro-lejana " * 30 + "El Ejército publicó el resumen. " + "cierre-lejano " * 30
+    text = f"{title}\n{body}"
+    matches = evaluate(text, (Rule("a", "Defensa"), Rule("b", "Ejército")))
+    for stored_title in (title, None):
+        message = Message(Kind.NEWS_ARTICLE, "rss:medio", "id", "feed", text, title=stored_title)
+        display = publication_display(message, matches)
+        assert display["title_fragments"][0] == ["Defensa", "info"]
+        assert ["Ejército", "info"] in display["fragments"]
+        excerpt = "".join(part for part, _ in display["fragments"])
+        assert "publicó el resumen" in excerpt and "presenta un informe" not in excerpt
+        assert len(excerpt) < 180
+        assert publication_display(message, matches[:1])["fragments"] == []
+
+
 async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path):
     app = create_app(tmp_path / "web.sqlite", practice=True, auto_start=False)
     async with TestClient(TestServer(app)) as client:
@@ -33,7 +50,7 @@ async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path):
         assert response.status == 200
         assert "Mesa de monitoreo" in await response.text()
         assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
-        for path in ("/app.css", "/app.js", "/radar.svg"):
+        for path in ("/app.css", "/app.js", "/ciberdefensa.png"):
             assert (await client.get(path)).status == 200
         assert (await client.get("/api/bootstrap", headers={"Host": "otro.example"})).status == 421
         assert (

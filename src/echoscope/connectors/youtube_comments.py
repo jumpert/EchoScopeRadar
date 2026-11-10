@@ -36,6 +36,7 @@ class Video:
     id: str
     title: str
     channel: str
+    description: str = ""
 
 
 def video_id(value: str) -> str:
@@ -212,7 +213,10 @@ async def find_videos(terms, credential, *, live=False):
         data = await _get(session, "search", query, youtube_headers(credential))
     return [
         Video(
-            item["id"]["videoId"], item["snippet"]["title"], item["snippet"].get("channelTitle", "")
+            item["id"]["videoId"],
+            item["snippet"]["title"],
+            item["snippet"].get("channelTitle", ""),
+            item["snippet"].get("description") or "",
         )
         for item in data.get("items", [])
         if VIDEO_ID.fullmatch(item.get("id", {}).get("videoId", ""))
