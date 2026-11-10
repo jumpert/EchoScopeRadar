@@ -103,6 +103,24 @@ class ThemeInput(StrictModel):
     value: Literal["light", "middle-light", "dark", "darkest"]
 
 
+SOURCE_GROUPS = {
+    "youtube": "YouTube",
+    "press": "Prensa",
+    "social": "Redes sociales",
+    "other": "Otros",
+}
+
+
+class SourceGroup(StrictModel):
+    id: str = Field(pattern=r"^custom-[a-f0-9-]{36}$")
+    name: str = Field(min_length=1, max_length=50)
+
+
+class SourceLayout(StrictModel):
+    categories: list[SourceGroup] = Field(max_length=20)
+    groups: dict[str, list[str]] = Field(max_length=24)
+
+
 class DiscoveryInput(StrictModel):
     value: str = Field(min_length=1, max_length=200)
 
@@ -441,6 +459,15 @@ def config_data(config):
         jobs.append(
             {
                 "id": job.id,
+                "default_group": (
+                    "youtube"
+                    if source.type.startswith("youtube_")
+                    else "social"
+                    if source.type == "bluesky_thread"
+                    else "press"
+                    if set(source_categories(source)) & {"news", "press"}
+                    else "other"
+                ),
                 "name": source.label or source.id,
                 "type_label": label,
                 "address": next(
@@ -477,6 +504,11 @@ async def bootstrap(request):
             "username": state.username,
             "credentials": state.vault.public(),
             "theme": await state.service.store.desktop_setting("theme") or "dark",
+            "source_layout": json.loads(
+                await state.service.store.desktop_setting("source_layout")
+                or '{"categories":[],"groups":{}}'
+            ),
+            "source_groups": SOURCE_GROUPS,
             "version": version("echoscope-radar"),
         }
     )
@@ -656,6 +688,28 @@ async def action(request):
         await service.set_running(ControlInput.model_validate(data).enabled)
     elif name == "theme":
         await service.set_theme(ThemeInput.model_validate(data).value)
+    elif name == "source-layout":
+        layout = SourceLayout.model_validate(data)
+        ids = set(SOURCE_GROUPS) | {item.id for item in layout.categories}
+        names = [name.casefold() for name in SOURCE_GROUPS.values()]
+        names.extend(item.name.casefold() for item in layout.categories)
+        ordered = [identifier for group in layout.groups.values() for identifier in group]
+        if (
+            len(ids) != len(SOURCE_GROUPS) + len(layout.categories)
+            or len(set(names)) != len(names)
+            or layout.groups.keys() - ids
+            or len(ordered) > 100
+            or len(set(ordered)) != len(ordered)
+        ):
+            raise ValueError("Revisá que cada categoría y fuente aparezca una sola vez.")
+        current = {job.id for job in state.config.jobs}
+        layout.groups = {
+            key: [identifier for identifier in group if identifier in current]
+            for key, group in layout.groups.items()
+        }
+        saved = layout.model_dump()
+        await service.store.set_desktop_setting("source_layout", json.dumps(saved))
+        return web.json_response(saved)
     elif name == "topic":
         state.config = await service.save_topic(TopicInput.model_validate(data).lines)
     elif name == "alert-review":

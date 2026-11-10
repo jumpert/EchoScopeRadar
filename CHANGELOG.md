@@ -1,5 +1,10 @@
 # Historial de versiones
 
+## 0.10.0
+
+- Los PDF incluyen barras con cifras y etiquetas legibles en escala de grises. El detalle completo agrega un cuadro por tipo de contenido.
+- Fuentes organizadas por categorías, con grupos personalizados y orden manual guardado por cuenta.
+
 ## 0.9.0
 
 - Chat en vivo agrupado por transmisión, con título y enlace original cuando están disponibles. Cada panel distingue fuentes habilitadas de recursos visibles.

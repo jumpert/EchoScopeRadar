@@ -178,6 +178,11 @@ mark[data-match="review"] { color:var(--violet); background:var(--review-bg); bo
 .section-heading { margin-bottom:16px }
 .section-heading p:not(.eyebrow),.card p { margin-top:6px; color:var(--muted); line-height:1.5 }
 .table-wrap { overflow:auto; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface) }
+.source-group { padding:10px; margin:10px 0; border:1px solid var(--line); border-radius:var(--radius) }
+.source-group h2 { margin:0 0 8px; font-size:16px }
+.source-group.source-drop { outline:2px dashed var(--accent); outline-offset:-3px }
+.source-order { display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-top:5px }
+.source-order select,.source-order button { padding:3px 6px; font-size:11px }
 table { width:100%; border-collapse:collapse; text-align:left }
 th,td { padding:9px 12px; border-bottom:1px solid var(--line) }
 th { color:var(--muted); background:var(--surface-2); font-size:12px }

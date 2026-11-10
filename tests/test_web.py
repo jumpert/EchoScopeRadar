@@ -114,6 +114,16 @@ async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path, 
         assert not next(job for job in settings["jobs"] if job["categories"] == ["live"])["polling"]
         token = settings["token"]
         headers = {"Origin": origin, "X-EchoScope-Token": token}
+        group = {"id": "custom-12345678-1234-1234-1234-123456789abc", "name": "Seguimiento diario"}
+        job_id = settings["jobs"][0]["id"]
+        layout = {"categories": [group], "groups": {group["id"]: [job_id]}}
+        assert (await client.post("/api/source-layout", json=layout, headers=headers)).status == 200
+        saved = await (await client.get("/api/bootstrap")).json()
+        assert saved["source_layout"] == layout
+        invalid = {**layout, "groups": {group["id"]: [job_id], "press": [job_id]}}
+        assert (
+            await client.post("/api/source-layout", json=invalid, headers=headers)
+        ).status == 400
         assert (await client.post("/api/monitor", json={"enabled": True})).status == 403
         assert (
             await client.post(

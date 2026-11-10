@@ -89,7 +89,14 @@
     <section id="sources-page" role="tabpanel" aria-labelledby="tab-sources" class="settings-page" hidden>
       <div class="section-heading"><div><p class="eyebrow">CONFIGURACIÓN</p><h1>Fuentes</h1><p>Elegí qué medios, videos, directos y comunidades seguir.</p></div><button id="add-source" class="button primary" type="button">+ Agregar fuente</button></div>
       <details class="inline-guide"><summary>Ayuda paso a paso</summary><ol><li>Elegí Agregar fuente y seleccioná el tipo de contenido.</li><li>Pegá el enlace. Para comentarios o reseñas de una página, podés usar Detectar feed.</li><li>Guardá la fuente, iniciá el seguimiento y revisá su estado en esta tabla.</li></ol></details>
-      <div class="table-wrap"><table><thead><tr><th>Fuente</th><th>Intervalo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="source-rows"></tbody></table></div>
+      <form id="source-category-form" class="input-row">
+        <label class="sr" for="source-category-name">Nombre de la categoría</label>
+        <input id="source-category-name" placeholder="Nombre de la categoría" maxlength="50" required>
+        <button class="button subtle" type="submit">Crear categoría</button>
+      </form>
+      <p class="metadata">Arrastrá desde ⠿ para ordenar o mover una fuente. También podés usar las flechas o el selector de categoría.</p>
+      <p id="source-layout-status" class="feedback" role="status"></p>
+      <div id="source-rows"></div>
     </section>
 
     <section id="settings-page" role="tabpanel" aria-labelledby="tab-settings" class="settings-page" hidden>

@@ -49,6 +49,8 @@ const ui = {
   limit: 45, page: "board", sequence: 0, noticeUntil: 0, timer: null, closed: false,
   columns: 3, widths: {}, order: [], defaults: [], projection: false, youtubeKeyLoaded: false,
   alertLimit: 20, alertRows: [], selectedAlerts: new Set(), username: null,
+  sourceGroups: {}, sourceLayout: { categories: [], groups: {} }, sourceDrag: null,
+  savingSources: false,
 };
 const streams = new Map();
 const time = new Intl.DateTimeFormat("es-UY", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -523,35 +525,170 @@ function renderAlerts(rows) {
 }
 
 let sourcesSignature;
+function arrangedSources() {
+  const groups = Object.fromEntries(
+    [...Object.keys(ui.sourceGroups), ...ui.sourceLayout.categories.map((item) => item.id)]
+      .map((id) => [id, []]),
+  );
+  const pending = new Set(ui.jobs.map((job) => job.id));
+  for (const [key, ids] of Object.entries(ui.sourceLayout.groups)) {
+    if (!groups[key]) continue;
+    for (const id of ids) if (pending.delete(id)) groups[key].push(id);
+  }
+  for (const job of ui.jobs) {
+    if (pending.has(job.id)) (groups[job.default_group] ?? groups.other)?.push(job.id);
+  }
+  return groups;
+}
+
+async function saveSourceLayout(groups, categories = ui.sourceLayout.categories, focus = null) {
+  if (ui.savingSources) return false;
+  ui.savingSources = true;
+  const status = $("source-layout-status");
+  try {
+    ui.sourceLayout = await api("source-layout", { groups, categories });
+    status.textContent = "Organización guardada.";
+    return true;
+  } catch (error) {
+    status.textContent = error.message;
+    return false;
+  } finally {
+    ui.savingSources = false;
+    renderSources();
+    if (focus) document.getElementById(focus)?.focus();
+  }
+}
+
+function moveSource(id, destination, before = null, focus = null) {
+  if (id === before) return;
+  const groups = arrangedSources();
+  for (const ids of Object.values(groups)) {
+    const index = ids.indexOf(id);
+    if (index >= 0) ids.splice(index, 1);
+  }
+  const ids = groups[destination];
+  const target = ids.indexOf(before);
+  ids.splice(target < 0 ? ids.length : target, 0, id);
+  saveSourceLayout(groups, ui.sourceLayout.categories, focus);
+}
+
 function renderSources() {
-  const signature = JSON.stringify([ui.jobs, ui.statuses, ui.running]);
+  if (ui.sourceDrag || ui.savingSources) return;
+  const signature = JSON.stringify([ui.jobs, ui.statuses, ui.running, ui.sourceLayout, ui.sourceGroups]);
   if (signature === sourcesSignature) return;
   sourcesSignature = signature;
   const states = new Map(ui.statuses.map((item) => [item.id, item]));
-  const rows = ui.jobs.map((job) => {
-    const row = node("tr");
-    const title = node("td", "", job.name);
-    title.append(node("div", "metadata", job.type_label ?? "Fuente simulada"));
-    const info = states.get(job.id);
-    const status = node("td", "", !job.enabled ? "Desactivada" : !ui.running ? "Seguimiento pausado" : (jobStates[info?.state] ?? "Disponible"));
-    if (info?.detail) status.append(node("div", "metadata", sourceDetails[info.detail] ?? info.detail));
-    if (info?.next && ui.running) status.append(node("div", "metadata", `Próxima consulta: ${time.format(new Date(info.next))}`));
-    const actions = node("td");
-    if (job.type_label) actions.append(button("Editar", "button subtle", () => showSource(job)));
-    if (job.type_label) {
-      actions.append(button("Quitar", "button subtle", () => {
-        if (window.confirm(`¿Quitar ${job.name} del seguimiento? El historial local se conserva.`)) {
-          runAction("remove", { value: job.id }, "Fuente eliminada.");
-        }
-      }));
+  const jobs = new Map(ui.jobs.map((job) => [job.id, job]));
+  const groups = arrangedSources();
+  const names = { ...ui.sourceGroups, ...Object.fromEntries(ui.sourceLayout.categories.map(({ id, name }) => [id, name])) };
+  const sections = Object.entries(groups).map(([key, ids]) => {
+    const section = node("section", "source-group");
+    const heading = node("h2", "", `${names[key]} · ${ids.length}`);
+    const wrap = node("div", "table-wrap");
+    const table = node("table");
+    table.setAttribute("aria-label", names[key]);
+    const header = table.createTHead().insertRow();
+    for (const label of ["Fuente", "Intervalo", "Estado", "Acciones"]) {
+      const cell = node("th", "", label);
+      cell.scope = "col";
+      header.append(cell);
     }
-    if (!ui.running && job.enabled && job.polling) actions.append(button("Consultar", "button subtle", () => runAction("probe", { value: job.id })));
-    if (ui.running && job.enabled && !["RUNNING", "PAUSED", "RATE_LIMITED"].includes(info?.state)) actions.append(button("Consultar ahora", "button subtle", () => runAction("run-source", { value: job.id })));
-    row.append(title, node("td", "", job.categories.includes("live") && job.minutes < 2 ? "En vivo" : `${job.minutes.toLocaleString("es-UY", { maximumFractionDigits: 2 })} min`), status, actions);
-    return row;
+    const body = table.createTBody();
+    for (const [index, id] of ids.entries()) {
+      const job = jobs.get(id);
+      const row = node("tr");
+      row.dataset.sourceId = id;
+      const title = node("td", "", job.name);
+      title.append(node("div", "metadata", job.type_label ?? "Fuente simulada"));
+      const controls = node("div", "source-order");
+      const handle = node("span", "drag-handle", "⠿");
+      handle.draggable = true;
+      handle.title = "Arrastrar para mover la fuente";
+      handle.setAttribute("aria-hidden", "true");
+      handle.addEventListener("dragstart", (event) => {
+        ui.sourceDrag = id;
+        event.dataTransfer.setData("text/plain", id);
+        event.dataTransfer.effectAllowed = "move";
+      });
+      handle.addEventListener("dragend", () => {
+        ui.sourceDrag = null;
+        document.querySelectorAll(".source-drop").forEach((element) => element.classList.remove("source-drop"));
+        renderSources();
+      });
+      const category = node("select");
+      category.id = `source-category-${id}`;
+      category.setAttribute("aria-label", `Categoría de ${job.name}`);
+      for (const [group, name] of Object.entries(names)) {
+        const option = node("option", "", name);
+        option.value = group;
+        category.append(option);
+      }
+      category.value = key;
+      category.addEventListener("change", () => {
+        const destination = category.value;
+        category.value = key;
+        moveSource(id, destination, null, category.id);
+      });
+      const up = button("↑", "button subtle", () => moveSource(id, key, ids[index - 1], up.id), `Subir ${job.name}`);
+      const down = button("↓", "button subtle", () => moveSource(id, key, ids[index + 2], down.id), `Bajar ${job.name}`);
+      up.id = `source-up-${id}`;
+      down.id = `source-down-${id}`;
+      up.disabled = index === 0;
+      down.disabled = index === ids.length - 1;
+      controls.append(handle, category, up, down);
+      title.append(controls);
+      const info = states.get(job.id);
+      const status = node("td", "", !job.enabled ? "Desactivada" : !ui.running ? "Seguimiento pausado" : (jobStates[info?.state] ?? "Disponible"));
+      if (info?.detail) status.append(node("div", "metadata", sourceDetails[info.detail] ?? info.detail));
+      if (info?.next && ui.running) status.append(node("div", "metadata", `Próxima consulta: ${time.format(new Date(info.next))}`));
+      const actions = node("td");
+      if (job.type_label) actions.append(button("Editar", "button subtle", () => showSource(job)));
+      if (job.type_label) {
+        actions.append(button("Quitar", "button subtle", () => {
+          if (window.confirm(`¿Quitar ${job.name} del seguimiento? El historial local se conserva.`)) {
+            runAction("remove", { value: job.id }, "Fuente eliminada.");
+          }
+        }));
+      }
+      if (!ui.running && job.enabled && job.polling) actions.append(button("Consultar", "button subtle", () => runAction("probe", { value: job.id })));
+      if (ui.running && job.enabled && !["RUNNING", "PAUSED", "RATE_LIMITED"].includes(info?.state)) actions.append(button("Consultar ahora", "button subtle", () => runAction("run-source", { value: job.id })));
+      row.append(title, node("td", "", job.categories.includes("live") && job.minutes < 2 ? "En vivo" : `${job.minutes.toLocaleString("es-UY", { maximumFractionDigits: 2 })} min`), status, actions);
+      body.append(row);
+    }
+    section.addEventListener("dragover", (event) => {
+      if (!ui.sourceDrag) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      section.classList.add("source-drop");
+    });
+    section.addEventListener("dragleave", (event) => {
+      if (!section.contains(event.relatedTarget)) section.classList.remove("source-drop");
+    });
+    section.addEventListener("drop", (event) => {
+      if (!ui.sourceDrag) return;
+      event.preventDefault();
+      const id = ui.sourceDrag;
+      ui.sourceDrag = null;
+      section.classList.remove("source-drop");
+      const target = event.target.closest("tr[data-source-id]");
+      const index = target ? ids.indexOf(target.dataset.sourceId) : -1;
+      const after = target && event.clientY > target.getBoundingClientRect().top + target.offsetHeight / 2;
+      moveSource(id, key, index < 0 ? null : ids[index + (after ? 1 : 0)]);
+    });
+    wrap.append(table);
+    section.append(heading, ids.length ? wrap : node("p", "metadata", "Arrastrá una fuente a esta categoría."));
+    return section;
   });
-  $("source-rows").replaceChildren(...rows);
+  $("source-rows").replaceChildren(...sections);
 }
+
+$("source-category-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const field = $("source-category-name");
+  if (!field.value.trim()) return;
+  const category = { id: `custom-${crypto.randomUUID()}`, name: field.value.trim() };
+  if (await saveSourceLayout(arrangedSources(), [...ui.sourceLayout.categories, category])) field.value = "";
+});
 
 async function refresh(force = false) {
   if (!ui.token || ui.closed) return;
@@ -1130,6 +1267,8 @@ $("logout").addEventListener("click", async () => {
     ui.token = data.token;
     ui.practice = data.practice;
     ui.username = data.username;
+    ui.sourceGroups = data.source_groups;
+    ui.sourceLayout = data.source_layout;
     $("shutdown").hidden = !!ui.username;
     $("logout").hidden = !ui.username;
     $("account-name").hidden = !ui.username;

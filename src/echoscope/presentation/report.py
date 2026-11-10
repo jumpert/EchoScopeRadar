@@ -3,11 +3,13 @@ from html import escape
 from io import BytesIO
 from urllib.parse import urlsplit
 
+from reportlab.graphics.shapes import Drawing, Rect
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import (
     KeepTogether,
+    LongTable,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -48,6 +50,92 @@ PUBLICATIONS = {
 }
 BRIEF_GROUP_LIMIT = 5
 BRIEF_ROWS_PER_GROUP = 2
+REVIEW_COLUMNS = (
+    ("open", "Sin verificar"),
+    ("verified", "Verificadas"),
+    ("threat", "Amenazas marcadas"),
+    ("dismissed", "Descartadas"),
+)
+REPORT_AREAS = {
+    "news": "Noticias",
+    "press": "Comentarios de prensa",
+    "reviews": "Reseñas",
+    "live": "Chats y directos",
+    "forum": "Foros",
+    "social": "Redes sociales",
+}
+
+
+def review_chart(counts, styles, width):
+    maximum = max(counts.values(), default=1)
+    chart_width = width - 205
+    rows = []
+    for state, label in REVIEW_COLUMNS:
+        value = counts[state]
+        bar = Drawing(chart_width, 8)
+        if value:
+            bar.add(
+                Rect(
+                    0,
+                    0,
+                    chart_width * value / maximum,
+                    8,
+                    fillColor=colors.HexColor("#404040"),
+                    strokeColor=None,
+                )
+            )
+        rows.append([Paragraph(label, styles["Meta"]), bar, str(value)])
+    return Table(
+        rows,
+        colWidths=[144, chart_width + 12, 37],
+        hAlign="LEFT",
+        style=TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("LINEBELOW", (0, -1), (-1, -1), 0.5, colors.HexColor("#777777")),
+            ]
+        ),
+    )
+
+
+def review_by_area(rows, styles, width):
+    grouped = {}
+    for row in rows:
+        label = REPORT_AREAS.get(row.get("category"), "Otros registros")
+        grouped.setdefault(label, Counter())[row["review_state"]] += 1
+    headers = [
+        "Tipo de contenido",
+        "Total",
+        "Sin verificar",
+        "Verificadas",
+        "Amenazas",
+        "Descartadas",
+    ]
+    table_rows = [[Paragraph(f"<b>{label}</b>", styles["Meta"]) for label in headers]]
+    for label, counts in sorted(grouped.items(), key=lambda item: (-item[1].total(), item[0])):
+        table_rows.append(
+            [
+                Paragraph(label, styles["Meta"]),
+                str(counts.total()),
+                *(str(counts[state]) for state, _ in REVIEW_COLUMNS),
+            ]
+        )
+    return LongTable(
+        table_rows,
+        colWidths=[width - 320, 44, 68, 68, 68, 72],
+        repeatRows=1,
+        style=TableStyle(
+            [
+                ("LINEBELOW", (0, 0), (-1, 0), 0.75, colors.black),
+                ("LINEBELOW", (0, 1), (-1, -1), 0.25, colors.HexColor("#aaaaaa")),
+                ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        ),
+    )
 
 
 def report_groups(rows):
@@ -160,7 +248,6 @@ def report_pdf(rows, start, end, practice, *, layout="brief"):
     styles["Heading3"].leading = 13
     styles["BodyText"].fontSize = 11
     styles["BodyText"].leading = 14
-    styles.add(ParagraphStyle("Figure", fontName="Helvetica-Bold", fontSize=16, leading=18))
     brief = layout == "brief"
     subtitle = "Resumen para imprimir" if brief else "Detalle completo"
     period = f"Capturas: {start:%d/%m/%Y} al {end:%d/%m/%Y} (UTC)"
@@ -174,30 +261,10 @@ def report_pdf(rows, start, end, practice, *, layout="brief"):
         eligible = [row for row in rows if row["provider"] != "YouTube"]
         counts = Counter(row["review_state"] for row in eligible)
         if eligible:
-            story.append(Paragraph("Estado del período", styles["Heading2"]))
-            summary = [
-                ("Con alerta", len(eligible)),
-                ("Sin verificar", counts["open"]),
-                ("Verificadas", counts["verified"]),
-                ("Amenazas marcadas", counts["threat"]),
-                ("Descartadas", counts["dismissed"]),
-            ]
-            table = Table(
-                [
-                    [Paragraph(label, styles["Meta"]) for label, _ in summary],
-                    [Paragraph(str(total), styles["Figure"]) for _, total in summary],
-                ],
-                colWidths=[(doc.width - 12) / 5] * 5,
-                hAlign="LEFT",
-                style=TableStyle(
-                    [
-                        ("LINEABOVE", (0, 0), (-1, 0), 0.5, colors.black),
-                        ("LINEBELOW", (0, -1), (-1, -1), 0.5, colors.black),
-                        ("BOTTOMPADDING", (0, -1), (-1, -1), 6),
-                    ]
-                ),
+            story.append(
+                Paragraph(f"Estado de revisión · {len(eligible)} registros", styles["Heading2"])
             )
-            story.append(table)
+            story.append(review_chart(counts, styles, doc.width))
             critical_pending = sum(
                 row["severity"] == "critical" and row["review_state"] == "open" for row in eligible
             )
@@ -213,6 +280,9 @@ def report_pdf(rows, start, end, practice, *, layout="brief"):
             top = ", ".join(f"{term[:45]} ({count})" for term, count in terms.most_common(3))
             if top:
                 story.append(Paragraph(f"Términos frecuentes: {escape(top)}.", styles["Meta"]))
+            if not brief:
+                story.append(Paragraph("Revisión por tipo de contenido", styles["Heading2"]))
+                story.append(review_by_area(eligible, styles, doc.width))
         if len(eligible) != len(rows):
             story.append(Spacer(1, 7))
             story.append(
