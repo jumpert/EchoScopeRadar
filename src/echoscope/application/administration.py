@@ -372,10 +372,12 @@ class Administration:
                         if item.source.credential and item.source.credential.env == YOUTUBE_KEY:
                             await self.radar.execute(JobCommand(item.job.id, "recover"))
 
-    async def search(self, terms):
+    async def search(self, terms, *, live=False):
         if not terms.strip():
             raise ValueError("Escribí el tema que querés buscar en YouTube.")
-        return await find_videos(terms.strip(), Credential(kind="api_key", env=YOUTUBE_KEY))
+        return await find_videos(
+            terms.strip(), Credential(kind="api_key", env=YOUTUBE_KEY), live=live
+        )
 
     async def detect_comments(self, url):
         return await discover_comment_feed(url.strip())

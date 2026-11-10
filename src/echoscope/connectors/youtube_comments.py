@@ -195,7 +195,7 @@ class YouTubeComments:
                     break
 
 
-async def find_videos(terms, credential):
+async def find_videos(terms, credential, *, live=False):
     query = {
         "part": "snippet",
         "type": "video",
@@ -204,6 +204,8 @@ async def find_videos(terms, credential):
         "relevanceLanguage": "es",
         "maxResults": 12,
     }
+    if live:
+        query["eventType"] = "live"
     async with aiohttp.ClientSession(
         trust_env=False, timeout=aiohttp.ClientTimeout(total=15)
     ) as session:
@@ -213,5 +215,5 @@ async def find_videos(terms, credential):
             item["id"]["videoId"], item["snippet"]["title"], item["snippet"].get("channelTitle", "")
         )
         for item in data.get("items", [])
-        if item.get("id", {}).get("videoId")
+        if VIDEO_ID.fullmatch(item.get("id", {}).get("videoId", ""))
     ]

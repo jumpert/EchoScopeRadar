@@ -10,6 +10,9 @@ const names = {
   NEWS_ARTICLE: "Noticia", YOUTUBE_VIDEO: "Video", YOUTUBE_LIVE: "Directo", FORUM_POST: "Foro", PRESS_COMMENT: "Comentario de prensa",
 };
 const severity = { info: "Info", important: "Importante", critical: "Crítica", review: "Para revisar" };
+const tones = {
+  positive: ["＋", "Positivo"], negative: ["−", "Negativo"], mixed: ["±", "Mixto"], neutral: ["·", "Neutro"],
+};
 const jobStates = {
   DISABLED: "Desactivada", IDLE: "Finalizada", SCHEDULED: "Programada", RUNNING: "Consultando",
   PAUSED: "En pausa", RETRYING: "Reintentando", RATE_LIMITED: "Cuota alcanzada", ERROR: "Revisar conexión",
@@ -19,6 +22,7 @@ const ui = {
   token: "", practice: false, jobs: [], types: [], visible: [], focus: null, theme: "dark",
   alertsVisible: true, alertMode: "confirmed", frozen: false, running: false, statuses: [],
   limit: 45, page: "board", sequence: 0, noticeUntil: 0, timer: null, closed: false,
+  columns: 3, widths: {}, order: [], defaults: [], projection: false,
 };
 const streams = new Map();
 const time = new Intl.DateTimeFormat("es-UY", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -89,22 +93,89 @@ function activePanels() { return ui.focus ? [ui.focus] : ui.visible; }
 
 function updateLayout() {
   const active = activePanels();
-  $("panels").dataset.count = String(active.length);
   $("restore-layout").hidden = !ui.focus;
+  $("projection-restore").hidden = !ui.focus;
   for (const key of Object.keys(labels)) {
     const tab = $(`panel-toggle-${key}`);
     tab.setAttribute("aria-pressed", String(active.includes(key)));
     tab.title = active.includes(key) ? `Ocultar ${labels[key]}` : `Mostrar ${labels[key]}`;
     const stream = streams.get(key);
-    stream.panel.hidden = !active.includes(key);
+    stream.panel.dataset.width = ui.widths[key] ?? 2;
+    stream.arrange.disabled = active.length < 2;
+    stream.arrange.options[1].disabled = active[0] === key;
+    stream.arrange.options[2].disabled = active.at(-1) === key;
+    stream.arrange.options[3].disabled = (ui.widths[key] ?? 2) === 3;
+    stream.arrange.options[4].disabled = (ui.widths[key] ?? 2) === 1;
     stream.expand.textContent = ui.focus === key ? "↙" : "⤢";
     const label = ui.focus === key ? "Restaurar vista de paneles" : `Maximizar ${labels[key]}`;
     stream.expand.setAttribute("aria-label", label);
     stream.expand.title = label;
   }
-  $("empty-grid").hidden = active.length > 0;
-  if (active.length) $("panels").append(...active.map((key) => streams.get(key).panel));
+  const scrolled = active.map((key) => [streams.get(key).list, streams.get(key).list.scrollTop]);
+  const rows = [];
+  for (let start = 0; start < active.length; start += ui.columns) {
+    const row = node("div", "panel-row");
+    row.append(...active.slice(start, start + ui.columns).map((key) => streams.get(key).panel));
+    rows.push(row);
+  }
+  $("panels").replaceChildren(...(rows.length ? rows : [node("div", "empty empty-grid", "Elegí un flujo en la barra de paneles para volver a mostrarlo.")]));
+  for (const [list, offset] of scrolled) list.scrollTop = offset;
+  $("panel-controls").append(...ui.order.map((key) => $(`panel-toggle-${key}`)));
   remember(`panels.${ui.practice}`, ui.visible);
+  remember(`layout.${ui.practice}`, { columns: ui.columns, widths: ui.widths, order: ui.order });
+}
+
+function movePanel(key, target) {
+  if (key === target || !ui.visible.includes(key) || !ui.visible.includes(target)) return;
+  const index = ui.visible.indexOf(target);
+  ui.visible.splice(ui.visible.indexOf(key), 1);
+  ui.visible.splice(index, 0, key);
+  const visible = [...ui.visible];
+  ui.order = ui.order.map((item) => ui.visible.includes(item) ? visible.shift() : item);
+  updateLayout();
+}
+
+function arrangePanel(key, action) {
+  if (action === "wider" || action === "narrower") {
+    ui.widths[key] = Math.min(3, Math.max(1, (ui.widths[key] ?? 2) + (action === "wider" ? 1 : -1)));
+    updateLayout();
+  } else {
+    const target = ui.visible[ui.visible.indexOf(key) + (action === "before" ? -1 : 1)];
+    if (target) movePanel(key, target);
+  }
+  streams.get(key).arrange.focus();
+}
+
+function enablePanelDrag(handle, key) {
+  let target;
+  let pointer;
+  function clear() {
+    target?.classList.remove("drop-target");
+    target = null;
+    pointer = null;
+  }
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || ui.focus || ui.visible.length < 2 || pointer != null) return;
+    pointer = event.pointerId;
+    handle.setPointerCapture(pointer);
+  });
+  function locate(event) {
+    const panel = document.elementFromPoint(event.clientX, event.clientY)?.closest(".stream");
+    return panel && panel.dataset.panel !== key ? panel : null;
+  }
+  handle.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== pointer) return;
+    target?.classList.remove("drop-target");
+    target = locate(event);
+    target?.classList.add("drop-target");
+  });
+  handle.addEventListener("pointerup", (event) => {
+    if (event.pointerId !== pointer) return;
+    const destination = locate(event)?.dataset.panel;
+    clear();
+    if (destination) movePanel(key, destination);
+  });
+  handle.addEventListener("lostpointercapture", clear);
 }
 
 function hidePanel(key) {
@@ -118,7 +189,7 @@ function hidePanel(key) {
 function togglePanel(key) {
   if (ui.focus === key || (!ui.focus && ui.visible.includes(key))) return hidePanel(key);
   ui.focus = null;
-  if (!ui.visible.includes(key)) ui.visible.push(key);
+  if (!ui.visible.includes(key)) ui.visible = ui.order.filter((item) => item === key || ui.visible.includes(item));
   updateLayout();
   refresh(true);
 }
@@ -143,9 +214,29 @@ function buildLayout() {
     panel.setAttribute("aria-labelledby", `stream-title-${key}`);
     const title = node("h2", "", label);
     title.id = `stream-title-${key}`;
+    title.title = label;
     const expand = button("⤢", "icon-button", () => focusPanel(key), `Maximizar ${label}`);
     const actions = node("div", "panel-actions");
-    actions.append(expand, button("−", "icon-button", () => hidePanel(key), `Ocultar ${label}`));
+    const arrange = node("select", "panel-arrange");
+    arrange.setAttribute("aria-label", `Mover o reajustar ${label}`);
+    arrange.title = `Mover o reajustar ${label}`;
+    for (const [value, text] of [["", "↔"], ["before", "Mover antes"], ["after", "Mover después"], ["wider", "Más ancho"], ["narrower", "Más angosto"]]) {
+      const option = node("option", "", text);
+      option.value = value;
+      arrange.append(option);
+    }
+    arrange.options[0].disabled = true;
+    arrange.value = "";
+    arrange.addEventListener("change", () => {
+      const action = arrange.value;
+      arrange.value = "";
+      arrangePanel(key, action);
+    });
+    const handle = node("span", "drag-handle", "⠿");
+    handle.title = `Arrastrar ${label} sobre otro panel`;
+    handle.setAttribute("aria-hidden", "true");
+    enablePanelDrag(handle, key);
+    actions.append(handle, arrange, expand, button("−", "icon-button", () => hidePanel(key), `Ocultar ${label}`));
     const head = node("header", "stream-head");
     head.append(title, actions);
     const meta = node("div", "stream-meta", "Preparando flujo…");
@@ -156,12 +247,8 @@ function buildLayout() {
       refresh(true);
     });
     panel.append(head, meta, list, load);
-    $("panels").append(panel);
-    streams.set(key, { panel, meta, list, expand, load, signature: null });
+    streams.set(key, { panel, meta, list, expand, load, arrange, signature: null });
   }
-  const empty = node("div", "empty empty-grid", "Elegí un flujo en la barra de paneles para volver a mostrarlo.");
-  empty.id = "empty-grid";
-  $("panels").append(empty);
   updateLayout();
 }
 
@@ -177,10 +264,22 @@ function richText(container, fragments) {
   }
 }
 
+function toneBadge(tone, full = false) {
+  const value = Object.hasOwn(tones, tone) ? tone : "neutral";
+  const [symbol, label] = tones[value];
+  const badge = node("span", "tone", full ? `${symbol} ${label}` : symbol);
+  badge.dataset.tone = value;
+  badge.title = `Tono estimado: ${label.toLowerCase()}`;
+  badge.setAttribute("aria-label", badge.title);
+  if (!full) badge.setAttribute("role", "img");
+  return badge;
+}
+
 function showDetails(item) {
   $("details-type").textContent = names[item.kind] ?? "Resultado";
   $("details-title").textContent = item.source;
   $("details-meta").textContent = [detailTime.format(new Date(item.date)), item.author].filter(Boolean).join(" · ");
+  $("details-tone").replaceChildren(node("span", "", "Tono estimado "), toneBadge(item.tone, true));
   $("details-text").replaceChildren();
   richText($("details-text"), item.fragments);
   $("details-matches").replaceChildren(...item.matches.map(([raw, canonical, method]) =>
@@ -228,7 +327,7 @@ function renderPanel(key, rows, statuses) {
   stream.signature = signature;
   replaceRecords(stream.list, rows, (item) => {
     const control = button("", "record", () => showDetails(item));
-    control.append(node("span", "record-time", time.format(new Date(item.date))));
+    control.append(node("span", "record-time", time.format(new Date(item.date))), toneBadge(item.tone));
     const text = node("span", "record-body");
     text.append(node("span", "author", item.author || item.source));
     richText(text, item.fragments);
@@ -249,7 +348,14 @@ function renderAlerts(rows) {
     const label = node("span", "severity", severity[level] || "Info");
     label.dataset.level = level;
     const terms = [...new Set(item.matches.filter((match) => (match[2] === "review") === (ui.alertMode === "review")).map((match) => match[0]))];
-    control.append(label, node("span", "record-time", time.format(new Date(item.captured))), node("span", "", `${item.source} · ${terms.join(" · ")}`));
+    const summary = node("span", "alert-summary");
+    summary.append(node("span", "alert-source", item.source));
+    for (const term of terms) {
+      const mark = node("mark", "alert-term", term);
+      mark.dataset.match = level;
+      summary.append(mark);
+    }
+    control.append(label, node("span", "record-time", time.format(new Date(item.captured))), toneBadge(item.tone), summary);
     return control;
   }, ui.alertMode === "review" ? "Sin coincidencias aproximadas." : "Sin alertas confirmadas para este filtro.");
 }
@@ -298,6 +404,7 @@ async function refresh(force = false) {
     $("run-status").classList.toggle("is-live", data.running);
     $("run-status").lastElementChild.textContent = data.running ? "EN CURSO" : "EN PAUSA";
     $("key-status").textContent = data.key_loaded ? "Clave cargada para esta sesión." : "Clave pendiente para consultar YouTube.";
+    $("web-key-status").textContent = data.web_key_loaded ? "Clave cargada para esta sesión." : "Búsqueda web abierta sin habilitar.";
     if (!ui.frozen || force) {
       for (const [key, rows] of Object.entries(data.panels)) renderPanel(key, rows, data.statuses);
       renderAlerts(data.alerts);
@@ -374,6 +481,51 @@ function choosePage(page) {
   }
   if (page === "sources") renderSources();
 }
+
+async function setProjection(enabled) {
+  if (enabled) choosePage("board");
+  ui.projection = enabled;
+  document.body.classList.toggle("is-projecting", enabled);
+  $("projection-bar").hidden = !enabled;
+  (enabled ? $("exit-projection") : $("enter-projection")).focus();
+  if (enabled && !document.fullscreenElement) {
+    try { await document.documentElement.requestFullscreen?.(); } catch { /* Embedded browsers still get the expanded layout. */ }
+  } else if (!enabled && document.fullscreenElement) {
+    await document.exitFullscreen().catch(() => {});
+  }
+}
+
+$("enter-projection").addEventListener("click", () => setProjection(true));
+$("exit-projection").addEventListener("click", () => setProjection(false));
+$("projection-restore").addEventListener("click", () => {
+  if (ui.focus) focusPanel(ui.focus);
+});
+document.addEventListener("fullscreenchange", () => {
+  if (ui.projection && !document.fullscreenElement) setProjection(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.defaultPrevented || document.querySelector("dialog[open]")) return;
+  if (event.key === "Escape" && ui.projection) setProjection(false);
+  if (event.key.toLowerCase() === "p" && !event.ctrlKey && !event.altKey && !event.metaKey &&
+      !event.target.closest("input,textarea,select,[contenteditable]")) {
+    event.preventDefault();
+    setProjection(!ui.projection);
+  }
+});
+$("columns").addEventListener("change", () => {
+  ui.columns = Number($("columns").value);
+  updateLayout();
+});
+$("reset-layout").addEventListener("click", () => {
+  ui.columns = 3;
+  $("columns").value = "3";
+  ui.widths = {};
+  ui.visible = [...ui.defaults];
+  ui.order = [...new Set([...ui.defaults, ...Object.keys(labels)])];
+  ui.focus = null;
+  updateLayout();
+  refresh(true);
+});
 
 document.querySelectorAll("[data-page]").forEach((tab) => {
   tab.addEventListener("click", () => choosePage(tab.dataset.page));
@@ -468,6 +620,106 @@ $("key-form").addEventListener("submit", async (event) => {
   $("youtube-key").value = "";
   await runAction("key", { value }, "Clave cargada para esta sesión.");
 });
+$("web-key-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const value = $("web-key").value;
+  $("web-key").value = "";
+  await runAction("web-key", { value }, "Búsqueda web habilitada para esta sesión.");
+});
+
+const discoveryGroups = {
+  live: "Directos en YouTube", video: "Videos de YouTube", article: "Noticias en feeds",
+  feed: "Comentarios, foros y reseñas en feeds", web: "Sitios de la web abierta",
+};
+
+function candidateCard(item) {
+  const card = node("article", "discovery-result");
+  card.append(node("h4", "", item.title || "Resultado"), node("p", "metadata", item.source));
+  if (item.excerpt) card.append(node("p", "", item.excerpt));
+  if (!item.url) return card;
+  const actions = node("div", "discovery-actions");
+  const link = node("a", "button subtle", "Abrir ↗");
+  link.href = item.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  actions.append(link);
+  const source = { name: (item.title || item.source).slice(0, 80), address: item.url };
+  if (item.kind === "live" || item.kind === "video") {
+    actions.append(button(item.kind === "live" ? "Seguir chat" : "Seguir comentarios", "button subtle", () => {
+      showSource({ ...source, type_label: item.kind === "live" ? "Chat de un directo de YouTube" : "Comentarios de un video de YouTube" });
+    }));
+  } else if (["article", "web"].includes(item.kind) && item.url.startsWith("https://")) {
+    const feedback = node("p", "metadata");
+    feedback.setAttribute("role", "status");
+    const discover = button("Buscar comentarios", "button subtle", async () => {
+      discover.disabled = true;
+      feedback.textContent = "Comprobando si el sitio publica un feed de comentarios…";
+      try {
+        const data = await api("discover", { value: item.url });
+        if (data.url) {
+          feedback.textContent = "Feed de comentarios encontrado.";
+          showSource({ ...source, address: data.url, type_label: "Comentarios de un sitio (RSS)" });
+        } else feedback.textContent = "El sitio no anuncia un feed público de comentarios.";
+      } catch (error) { feedback.textContent = error.message; }
+      finally { discover.disabled = false; }
+    });
+    actions.append(discover);
+    card.append(actions, feedback);
+    return card;
+  }
+  card.append(actions);
+  return card;
+}
+
+function renderDiscovery(data) {
+  const results = $("topic-search-results");
+  const groups = [];
+  for (const [kind, label] of Object.entries(discoveryGroups)) {
+    const candidates = data.candidates.filter((item) => item.kind === kind);
+    if (!candidates.length) continue;
+    const section = node("section", "discovery-group");
+    section.append(node("h3", "", `${label} · ${candidates.length}`), ...candidates.map(candidateCard));
+    groups.push(section);
+  }
+  if (data.history.length) {
+    const section = node("section", "discovery-group");
+    section.append(node("h3", "", `Historial de EchoScope · ${data.history.length}`));
+    for (const item of data.history) {
+      const control = button("", "discovery-result discovery-history", () => showDetails(item));
+      const text = node("span", "");
+      const excerpt = item.fragments.map(([part]) => part).join("").slice(0, 100);
+      text.textContent = `${item.source} · ${excerpt || "Abrir mensaje"}`;
+      control.append(toneBadge(item.tone), text);
+      section.append(control);
+    }
+    groups.unshift(section);
+  }
+  if (data.notes.length) {
+    const notes = node("details", "discovery-notes");
+    notes.append(node("summary", "", "Cobertura y estado de la búsqueda"));
+    const list = node("ul", "");
+    list.append(...data.notes.map((note) => node("li", "", note)));
+    notes.append(list);
+    notes.open = !groups.length;
+    groups.push(notes);
+  }
+  results.replaceChildren(...groups);
+  const total = data.candidates.length + data.history.length;
+  $("topic-search-status").textContent = total ? `${total} resultados en las fuentes consultadas.` : "Sin resultados en las fuentes consultadas.";
+}
+
+$("open-topic-search").addEventListener("click", () => $("topic-search-dialog").showModal());
+$("topic-search-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = $("topic-search-form").querySelector("button[type=submit]");
+  if (submit.disabled) return;
+  submit.disabled = true;
+  $("topic-search-status").textContent = "Buscando en las fuentes disponibles…";
+  $("topic-search-results").replaceChildren();
+  try { renderDiscovery(await api("topic-search", { value: $("topic-search").value })); }
+  catch (error) { $("topic-search-status").textContent = error.message; }
+  finally { submit.disabled = false; }
+});
 $("youtube-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("video-results").replaceChildren(node("p", "", "Buscando…"));
@@ -499,13 +751,23 @@ $("shutdown").addEventListener("click", async () => {
     ui.token = data.token;
     ui.practice = data.practice;
     const defaults = ui.practice ? ["live", "press", "reviews"] : ["news", "youtube", "live"];
+    ui.defaults = defaults;
     const layout = preference(`panels.${ui.practice}`, defaults);
     ui.visible = Array.isArray(layout) ? [...new Set(layout.filter((key) => Object.hasOwn(labels, key)))] : defaults;
+    const options = preference(`layout.${ui.practice}`, {});
+    ui.columns = [1, 2, 3].includes(options.columns) ? options.columns : 3;
+    $("columns").value = String(ui.columns);
+    const order = Array.isArray(options.order) ? options.order.filter((key) => Object.hasOwn(labels, key)) : ui.visible;
+    ui.order = [...new Set([...order, ...Object.keys(labels)])];
+    for (const key of Object.keys(labels)) {
+      if ([1, 2, 3].includes(options.widths?.[key])) ui.widths[key] = options.widths[key];
+    }
     ui.alertsVisible = preference("alerts", true) !== false;
     setTheme(data.theme);
     $("edition").textContent = `${data.practice ? "PRÁCTICA" : "LOCAL"} · ${data.version}`;
     applyConfig(data, true);
     buildLayout();
+    $("open-topic-search").disabled = false;
     toggleAlerts();
     await tick();
   } catch (error) {

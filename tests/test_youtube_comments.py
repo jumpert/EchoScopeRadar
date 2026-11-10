@@ -51,6 +51,9 @@ async def test_youtube_search_threads_and_replies_via_http(monkeypatch):
         if endpoint == "search":
             assert request.query["regionCode"] == "UY"
             assert "Defensa" in request.query["q"]
+            assert request.query.get("eventType") == (
+                "live" if calls.count("search") == 2 else None
+            )
             return web.json_response(
                 {
                     "items": [
@@ -120,6 +123,8 @@ async def test_youtube_search_threads_and_replies_via_http(monkeypatch):
         assert all(item.kind == Kind.COMMENT for item in batches[0].messages)
         assert batches[0].coverage_gap
         assert calls == ["search", "commentThreads", "comments"]
+        videos = await find_videos("Defensa Uruguay", credential, live=True)
+        assert videos[0].id == "01234567890"
         source.params["video_id"] = "11111111111"
         async with aclosing(YouTubeComments().poll(Request(source, None, 5))) as stream:
             with pytest.raises(CommentsUnavailable):

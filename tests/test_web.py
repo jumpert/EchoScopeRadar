@@ -68,6 +68,12 @@ async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path):
                 await asyncio.sleep(0.1)
         assert data["running"]
         assert data["alerts"]
+        assert all(
+            item["tone"] in {"positive", "negative", "mixed", "neutral"} for item in data["alerts"]
+        )
+        search = await client.post("/api/topic-search", json={"value": "atención"}, headers=headers)
+        discovery = await search.json()
+        assert search.status == 200 and discovery["candidates"] == [] and discovery["history"]
         assert all(item["kind"] == "REVIEW" for item in data["panels"]["reviews"])
         assert all(item["kind"] != "REVIEW" for item in data["panels"]["press"])
         assert any(mark for item in data["panels"]["press"] for _, mark in item["fragments"])

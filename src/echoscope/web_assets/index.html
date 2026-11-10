@@ -34,11 +34,22 @@
     <section id="board-page" role="tabpanel" aria-labelledby="tab-board" class="board-page">
       <div class="board-heading">
         <div><p class="eyebrow">CENTRO DE ESCUCHA</p><h1>Mesa de monitoreo</h1></div>
-        <button id="restore-layout" class="button subtle" type="button" hidden>↙ Restaurar vista</button>
+        <div class="heading-actions">
+          <button id="restore-layout" class="button subtle" type="button" hidden>↙ Restaurar vista</button>
+          <button id="open-topic-search" class="button primary" type="button" disabled>Buscar por tema</button>
+          <button id="enter-projection" class="button subtle" type="button" title="Modo proyección (P)">⤢ Proyección</button>
+        </div>
+      </div>
+      <div class="projection-bar" id="projection-bar" hidden>
+        <span>EchoScope Radar</span><button id="projection-restore" class="text-button" type="button" hidden>Restaurar paneles</button>
+        <button id="exit-projection" class="text-button" type="button">Salir de proyección <kbd>Esc</kbd></button>
       </div>
       <div class="toolbar">
         <div id="panel-controls" class="panel-controls" aria-label="Paneles visibles"></div>
         <div class="tools">
+          <label class="sr" for="columns">Paneles por fila</label>
+          <select id="columns" title="Paneles por fila"><option value="3">3 por fila</option><option value="2">2 por fila</option><option value="1">1 por fila</option></select>
+          <button id="reset-layout" class="icon-button" type="button" title="Restablecer distribución" aria-label="Restablecer distribución">↺</button>
           <label class="sr" for="filter">Buscar en resultados</label>
           <input id="filter" type="search" placeholder="Buscar en resultados…" maxlength="200">
           <label class="sr" for="match-mode">Tipo de coincidencia</label>
@@ -70,15 +81,24 @@
         <form class="card" id="topic-form"><h2>Lista blanca</h2><label for="topic">Un término o frase por línea</label><textarea id="topic" rows="10" required></textarea><p>Para aprobar una variante, escribí <code>Ejército | ejersito</code>. Las aproximaciones aparecen en «Para revisar».</p><button class="button primary" type="submit">Guardar lista blanca</button></form>
         <div class="card"><form id="key-form"><h2>Acceso a YouTube</h2><p id="key-status">Comprobando acceso…</p><label for="youtube-key">Clave de YouTube Data API</label><input id="youtube-key" type="password" autocomplete="off" maxlength="4096" required><p>La clave se usa durante la sesión del motor.</p><button class="button primary" type="submit">Cargar clave</button></form>
         <form id="youtube-form" class="stack-form"><h2>Buscar un video</h2><label for="youtube-search">Palabras o tema</label><input id="youtube-search" maxlength="200" placeholder="Ejército Nacional Uruguay" required><button class="button subtle" type="submit">Buscar en YouTube</button></form><div id="video-results" class="video-results"></div></div>
+        <form id="web-key-form" class="card"><h2>Acceso a la web abierta</h2><p id="web-key-status">Comprobando acceso…</p><label for="web-key">Clave de Brave Search API (opcional)</label><input id="web-key" type="password" autocomplete="off" maxlength="4096" required><p>Amplía la búsqueda a sitios públicos indexados. La consulta se envía a Brave y puede consumir cuota. La clave se usa durante la sesión.</p><button class="button primary" type="submit">Cargar clave</button></form>
       </div>
     </section>
   </main>
 
   <footer class="statusbar"><span id="status" role="status" aria-live="polite">Preparando la mesa…</span><span id="updated"></span><button type="button" id="shutdown" class="text-button">Cerrar EchoScope</button></footer>
 
+  <dialog id="topic-search-dialog" aria-labelledby="topic-search-title">
+    <div class="dialog-head"><div><p class="eyebrow">DESCUBRIMIENTO</p><h2 id="topic-search-title">Buscar por tema</h2></div><button type="button" class="icon-button" data-close="topic-search-dialog" aria-label="Cerrar búsqueda">×</button></div>
+    <p class="metadata">Escribí un tema. EchoScope consulta el historial, los feeds activos y los proveedores habilitados. YouTube y Brave reciben el texto de la consulta si cargaste sus claves.</p>
+    <form id="topic-search-form" class="input-row"><label class="sr" for="topic-search">Tema a buscar</label><input id="topic-search" required maxlength="200" placeholder="Ejército Nacional Uruguay"><button class="button primary" type="submit">Buscar</button></form>
+    <p class="feedback" id="topic-search-status" role="status"></p>
+    <div id="topic-search-results"></div>
+  </dialog>
+
   <dialog id="details" aria-labelledby="details-title">
     <div class="dialog-head"><div><p class="eyebrow" id="details-type">RESULTADO</p><h2 id="details-title">Detalle</h2></div><button type="button" class="icon-button" data-close="details" aria-label="Cerrar detalle">×</button></div>
-    <p class="metadata" id="details-meta"></p><div id="details-text" class="detail-text"></div><ul id="details-matches" class="detail-matches"></ul>
+    <p class="metadata" id="details-meta"></p><p id="details-tone" class="detail-tone"></p><div id="details-text" class="detail-text"></div><ul id="details-matches" class="detail-matches"></ul>
     <div class="dialog-actions"><a id="details-link" class="button primary" target="_blank" rel="noopener noreferrer" hidden>Abrir publicación ↗</a><button type="button" class="button subtle" data-close="details">Cerrar</button></div>
   </dialog>
 

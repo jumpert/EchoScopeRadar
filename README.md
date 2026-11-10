@@ -2,15 +2,15 @@
 
 Centro de monitoreo para comentarios, reseñas, feeds y chats de directos. Cada panel muestra los mensajes recibidos, incluidas las capturas sin coincidencias. Las reglas resaltan términos en el texto original y agrupan sus apariciones por alerta.
 
-## Versión 0.4.0 · Mesa web de monitoreo
+## Versión 0.5.0 · Proyección y búsqueda por tema
 
-En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa, YouTube y foros autorizados desde el navegador. Abrí **Probar EchoScope Radar.cmd** para practicar con datos simulados. La mesa muestra varios flujos y alertas a la vez. Cada panel se puede ocultar o ampliar. Podés alternar entre tema claro y oscuro, agregar fuentes y cargar la clave de YouTube durante la sesión.
+En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa, YouTube y foros autorizados desde el navegador. Abrí **Probar EchoScope Radar.cmd** para practicar con datos simulados. Podés reordenar, ocultar y ampliar los paneles, o usar **Proyección** para mostrar la mesa y las alertas sin los controles de configuración. **Buscar por tema** consulta varias fuentes sin pedir una URL.
 
 - [Guía para personal administrativo](docs/uso-administrativo.md)
 - [Pruebas y notas de prensa de Uruguay](docs/fuentes-uruguay.md)
 - [Historial de versiones](CHANGELOG.md)
 
-Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/0.4.0/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`.
+Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/0.5.0/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`.
 
 En Windows y Ubuntu, podés ejecutar desde código fuente con `uv sync --locked --extra youtube` y `uv run --no-sync echoscope-web`. Agregá `--demo` para practicar. La aplicación web escucha en la propia computadora. Si el puerto está ocupado, indicá otro con `--port 8770`. La interfaz anterior sigue disponible con `uv run --no-sync echoscope-desktop` o `EchoScopeRadar.exe --desktop`.
 

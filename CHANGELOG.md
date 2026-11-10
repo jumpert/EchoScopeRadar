@@ -1,5 +1,12 @@
 # Historial de versiones
 
+## 0.5.0
+
+- Modo proyección con pantalla completa cuando el navegador lo admite. Conserva los flujos y la bandeja de alertas.
+- Paneles reordenables por arrastre o menú, con ancho y columnas ajustables y distribución guardada por navegador.
+- Búsqueda temática en historial, RSS/Atom habilitados, YouTube y, con clave opcional, web abierta mediante Brave Search. Los resultados permiten iniciar el seguimiento de comentarios o chats disponibles.
+- Resaltado de alertas de mayor contraste e indicador de tono estimado en español.
+
 ## 0.4.0
 
 - Mesa web local de monitoreo como interfaz administrativa predeterminada en Windows. Reutiliza el motor, los perfiles, las preferencias y el historial de SQLite.

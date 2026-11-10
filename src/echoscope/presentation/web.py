@@ -14,7 +14,6 @@ from importlib.resources import files
 from pathlib import Path
 from time import monotonic
 from typing import Literal
-from urllib.parse import urlsplit
 
 from aiohttp import web
 from platformdirs import user_data_path
@@ -28,8 +27,10 @@ from echoscope.application.administration import (
     SourceForm,
 )
 from echoscope.application.config import StrictModel
+from echoscope.application.discovery import BRAVE_KEY, TopicDiscovery, public_result_url
 from echoscope.application.ports import AuthRequired, ConnectorError, StorageUnavailable
 from echoscope.domain.models import HistoryQuery, Kind, category
+from echoscope.domain.tone import message_tone
 
 PANELS = {
     "news": HistoryQuery(category="news"),
@@ -74,9 +75,14 @@ class ThemeInput(StrictModel):
     value: Literal["light", "dark"]
 
 
+class DiscoveryInput(StrictModel):
+    value: str = Field(min_length=1, max_length=200)
+
+
 class Workspace:
     def __init__(self, path, practice, auto_start):
         self.service = Administration(path, practice)
+        self.discovery = TopicDiscovery(self.service)
         self.practice = practice
         self.auto_start = auto_start
         self.authority = None
@@ -147,18 +153,7 @@ async def boundary(request, handler):
     return response
 
 
-def safe_url(value):
-    if not value or any(ord(char) < 32 for char in value):
-        return None
-    try:
-        parsed = urlsplit(value)
-        return (
-            value
-            if parsed.scheme in {"https", "http"} and parsed.hostname and parsed.username is None
-            else None
-        )
-    except ValueError:
-        return None
+safe_url = public_result_url
 
 
 def fragments(text, matches):
@@ -204,7 +199,8 @@ def result_data(result, sources):
         "author": message.author,
         "date": (message.published_at or message.captured_at).isoformat(),
         "captured": message.captured_at.isoformat(),
-        "url": safe_url(message.url),
+        "url": safe_url(message.url or ""),
+        "tone": message_tone(message.text),
         "fragments": fragments(message.text, matches),
         "severity": severity,
         "matches": [
@@ -327,6 +323,7 @@ async def board(request):
         {
             "running": bool(service.radar),
             "key_loaded": bool(os.environ.get(YOUTUBE_KEY)),
+            "web_key_loaded": bool(os.environ.get(BRAVE_KEY)),
             "panels": {
                 view: [result_data(item, sources) for item in rows]
                 for view, rows in zip(views, pages)
@@ -396,6 +393,23 @@ async def action(request):
         )
     elif name == "key":
         await service.credentials(TextInput.model_validate(data).value)
+    elif name == "web-key":
+        key = TextInput.model_validate(data).value
+        if not key.isascii() or not key.isprintable() or any(char.isspace() for char in key):
+            raise ValueError("Ingresá una clave de API sin espacios.")
+        os.environ[BRAVE_KEY] = key
+    elif name == "topic-search":
+        terms = DiscoveryInput.model_validate(data).value.strip()
+        candidates, notes = await state.discovery.search(terms, state.config)
+        names = {item.id: item.label or item.id for item in state.config.sources}
+        history = await service.messages(HistoryQuery(text=terms, limit=25))
+        return web.json_response(
+            {
+                "candidates": candidates,
+                "notes": notes,
+                "history": [result_data(item, names) for item in history],
+            }
+        )
     elif name == "search":
         return web.json_response(
             {

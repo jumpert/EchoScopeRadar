@@ -14,6 +14,8 @@ Para practicar, abrí **Probar EchoScope Radar.cmd**. Usa una base separada y ar
 
 - Usá los botones de flujo sobre la mesa para mostrar u ocultar **Chat en vivo**, **Comentarios de prensa**, **Reseñas**, **Noticias**, **Videos de YouTube** y **Foros**.
 - En cada cabecera, usá **Maximizar** para dar todo el ancho a ese flujo y **Restaurar vista** para volver a la distribución anterior. El control **Ocultar** retira el panel de la mesa.
+- Arrastrá el control de puntos de un panel sobre otro para cambiar su posición. El menú **↔** permite moverlo y ajustar su ancho sin arrastrar. Usá **Paneles por fila** para cambiar la cantidad de columnas y **↺** para recuperar la distribución inicial. El navegador recuerda tus ajustes.
+- Elegí **Proyección** o presioná **P** fuera de los campos de texto. Se ocultan los controles generales para dar más espacio a paneles y alertas. Si el navegador mantiene visibles sus barras, usá **F11**. Volvé con **Esc** o **Salir de proyección**.
 - Podés ocultar la bandeja de alertas. En ella, **Para revisar** muestra las coincidencias aproximadas por separado.
 - **Congelar vista** deja los resultados quietos mientras el motor sigue en su estado actual. **Pausar seguimiento** detiene las consultas. El campo de búsqueda y el selector de coincidencias filtran los resultados. **Cargar más historial** amplía la ventana de lectura hasta 200 resultados por panel.
 
@@ -22,6 +24,12 @@ Para practicar, abrí **Probar EchoScope Radar.cmd**. Usa una base separada y ar
 El perfil inicial consulta Telenoche, Subrayado, Montevideo Portal y El Observador. Para las notas pertinentes busca feeds de comentarios anunciados por el propio medio. La disponibilidad de los comentarios depende del acceso que publique cada sitio.
 
 Cuando cargás la clave de YouTube, el perfil consulta los canales de **Ejército del Uruguay** y **VTV Noticias**. Revisa videos recientes y busca directos activos relacionados con el tema. Las consultas se programan según la fuente. Los videos se revisan cada 30 minutos y los directos cada 60 minutos en el perfil inicial. Podés ajustar los intervalos en **Fuentes**.
+
+### Buscar por tema
+
+En la mesa elegí **Buscar por tema**, escribí palabras como `Ejército Uruguay` y presioná **Buscar**. Se consulta el historial local y la ventana actual de hasta 18 feeds habilitados. Con la clave de YouTube también se buscan videos y directos por tema. Para ampliar la búsqueda a sitios públicos indexados, cargá una clave de Brave Search en **Tema y acceso**. YouTube y Brave reciben el tema para ejecutar la consulta y pueden aplicar cuotas. También podés proporcionar las claves mediante `ECHOSCOPE_YOUTUBE_KEY` y `ECHOSCOPE_BRAVE_KEY` antes del arranque.
+
+En un video elegí **Seguir comentarios**, en un directo **Seguir chat**, o en una nota **Buscar comentarios**. EchoScope rellena el enlace cuando encuentra una fuente compatible. Revisá los datos y guardá el seguimiento. Encontrar una publicación permite abrirla. Para leer su conversación, el proveedor debe ofrecer un feed de comentarios anunciado o un chat accesible por API.
 
 ## Agregar contenido
 
@@ -41,6 +49,7 @@ Si el medio te entrega un token Bearer para un feed protegido, ingresalo en el c
 ## Interpretar los resultados
 
 - **Notas** son publicaciones del medio. **Comentarios** y **Chats en vivo** identifican mensajes de lectores y espectadores.
+- El término que disparó la alerta se resalta en el mensaje y en la bandeja. El símbolo junto al mensaje indica el tono estimado en español: **＋** positivo, **−** negativo, **±** mixto y **·** neutro. Es una estimación por vocabulario, con precisión limitada en ironía y lenguaje ambiguo. El tono y la severidad se muestran por separado.
 - Las fuentes con filtro temático guardan solo coincidencias. En un video que ya elegiste por el tema, podés dejar ese filtro desactivado para ver todos los comentarios de la ventana consultada.
 - **Cobertura parcial** indica que la fuente entregó una ventana limitada, faltaron respuestas o hubo un hueco durante la captura. La búsqueda muestra la ventana disponible y el historial local.
 - **Comentarios no disponibles** indica que el video no permite acceder a comentarios por la API, o que el recurso solicitado ya no está disponible. **Sin permiso** indica que la fuente rechazó el acceso.
