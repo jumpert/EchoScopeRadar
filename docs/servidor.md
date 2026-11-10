@@ -31,6 +31,8 @@ Respaldá la carpeta de datos y guardá la clave maestra por separado. Si cambia
 
 En **Claves API**, elegí YouTube, Brave Search, Tavily o Google mediante Serper. Poné un nombre reconocible a cada clave y usá **Usar** para seleccionar la activa de ese proveedor. Solo las claves activas se emplean en las consultas. El texto del tema se envía a los buscadores habilitados. No se envían tus otras claves.
 
+También podés guardar claves de redes sociales, proveedores de inteligencia artificial y servicios que agregues mediante **Otro proveedor**. Las claves indicadas como **Solo almacenamiento** quedan cifradas en tu cuenta y no se utilizan en consultas ni reportes. Agregar una clave no habilita un conector ni envía datos al servicio.
+
 Para habilitar SearXNG, el administrador puede indicar la URL base HTTPS pública con `ECHOSCOPE_SEARXNG_URL`. La instancia debe permitir respuestas JSON. Los motores que consulta dependen de la configuración de esa instancia. [API de SearXNG](https://docs.searxng.org/dev/search_api)
 
 La cobertura se puede ampliar incorporando adaptadores a `TopicDiscovery` cuando exista acceso a una API y se puedan comprobar sus resultados, cuotas y atribución. Google mediante Serper usa un proveedor intermediario. La API clásica de Bing está retirada y Google Custom Search JSON no admite nuevos clientes. [Retiro de Bing](https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement) · [Google Custom Search JSON](https://developers.google.com/custom-search/v1/overview)

@@ -1,4 +1,4 @@
-from collections import Counter, defaultdict
+from collections import Counter
 from html import escape
 from io import BytesIO
 from urllib.parse import urlsplit
@@ -30,11 +30,75 @@ KINDS = {
 }
 LEVELS = {"critical": "Crítica", "important": "Importante", "info": "Informativa"}
 TONES = {"positive": "Positivo", "negative": "Negativo", "mixed": "Mixto", "neutral": "Neutro"}
+REVIEWS = {
+    "open": "Sin verificar",
+    "verified": "Verificada",
+    "threat": "Marcada como amenaza",
+    "dismissed": "Descartada",
+}
+PUBLICATIONS = {
+    "NEWS_ARTICLE": "Nota",
+    "YOUTUBE_VIDEO": "Video",
+    "YOUTUBE_LIVE": "Directo",
+    "LIVE_CHAT": "Chat en vivo",
+    "PRESS_COMMENT": "Nota",
+    "REVIEW": "Reseñas",
+    "FORUM_POST": "Foro",
+    "SOCIAL_COMMENT": "Publicación en red social",
+    "COMMENT": "Comentarios",
+}
 
 
-def site_of(item):
-    host = urlsplit(item["url"] or item["resource_url"] or "").hostname
-    return host.removeprefix("www.") if host else item["source"]
+def report_groups(rows):
+    grouped = {}
+    for item in rows:
+        parent = item["resource_url"]
+        key = ("url", parent) if parent else ("source", item["source"], item["kind"])
+        grouped.setdefault(key, []).append(item)
+    for (_, parent, *_), records in grouped.items():
+        kinds = {item["kind"] for item in records}
+        group_kind = next(
+            (
+                key
+                for key in ("YOUTUBE_LIVE", "LIVE_CHAT", "YOUTUBE_VIDEO", "NEWS_ARTICLE")
+                if key in kinds
+            ),
+            records[0]["kind"],
+        )
+        label = (
+            "Video"
+            if group_kind == "COMMENT" and records[0]["provider"] == "YouTube"
+            else PUBLICATIONS.get(group_kind, "Publicación")
+        )
+        title = next(
+            (
+                item["resource_title"]
+                or (item["title"] if item["kind"] not in DISCUSSIONS else None)
+                for item in records
+                if item["resource_title"] or (item["title"] and item["kind"] not in DISCUSSIONS)
+            ),
+            None,
+        )
+        has_origin = records[0]["resource_url"] is not None
+        if not title:
+            host = urlsplit(parent).hostname if has_origin else None
+            title = (host or records[0]["source"]) + (
+                f" · {records[0]['resource_id']}" if records[0]["resource_id"] else ""
+            )
+        yield label, title, parent if has_origin else None, records
+
+
+def report_link(address, label, style):
+    try:
+        parsed = urlsplit(address)
+        if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username:
+            return None
+    except ValueError:
+        return None
+    return Paragraph(
+        f'<link href="{escape(address, quote=True)}" color="#087684"><u>{escape(label)}</u></link>',
+        style,
+    )
 
 
 def report_pdf(rows, start, end, practice):
@@ -68,33 +132,29 @@ def report_pdf(rows, start, end, practice):
         Paragraph(f"Fecha de captura (UTC): {start:%d/%m/%Y} al {end:%d/%m/%Y}", styles["Meta"]),
         Spacer(1, 8),
         Paragraph(
-            "Registros con coincidencias confirmadas. Las cifras describen la cobertura de EchoScope; dependen de los datos que entregó cada fuente.",
+            "Incluye registros con coincidencias confirmadas por las reglas. "
+            "El estado corresponde a la revisión actual de esos registros. "
+            "Marcar una amenaza es una decisión del operador.",
             styles["BodyText"],
         ),
     ]
     if practice:
         story.append(Paragraph("MODO DE PRÁCTICA · Datos simulados", styles["Heading2"]))
 
-    groups = defaultdict(list)
-    youtube = []
-    for item in rows:
-        if item["provider"] == "YouTube":
-            youtube.append(item)
-        else:
-            groups[site_of(item)].append(item)
-    if groups:
-        story.append(Paragraph("Resumen de sitios y feeds", styles["Heading2"]))
-        summary = [["Sitio o fuente", "Registros", "Conversación", "Críticas"]]
-        for name, records in sorted(groups.items(), key=lambda pair: (-len(pair[1]), pair[0])):
-            summary.append(
-                [
-                    Paragraph(escape(name), styles["SmallCell"]),
-                    str(len(records)),
-                    str(sum(row["kind"] in DISCUSSIONS for row in records)),
-                    str(sum(row["severity"] == "critical" for row in records)),
-                ]
-            )
-        table = LongTable(summary, colWidths=[258, 75, 90, 75], repeatRows=1, hAlign="LEFT")
+    if rows:
+        story.append(Paragraph("Resumen de alertas y revisión", styles["Heading2"]))
+        eligible = [row for row in rows if row["provider"] != "YouTube"]
+        counts = Counter(row["review_state"] for row in eligible)
+        reviewed = len(eligible) - counts["open"]
+        summary = [
+            ["Indicador", "Registros"],
+            ["Registros con alerta", str(len(eligible))],
+            ["Sin verificar", str(counts["open"])],
+            ["Verificadas", str(counts["verified"])],
+            ["Marcadas como amenaza", str(counts["threat"])],
+            ["Descartadas", str(counts["dismissed"])],
+        ]
+        table = LongTable(summary, colWidths=[doc.width - 90, 90], repeatRows=1, hAlign="LEFT")
         table.setStyle(
             TableStyle(
                 [
@@ -115,28 +175,54 @@ def report_pdf(rows, start, end, practice):
             )
         )
         story.append(table)
-        for site, records in sorted(groups.items()):
-            story.append(Paragraph(escape(site), styles["Heading2"]))
-            terms = Counter(term for item in records for term in set(item["confirmed_terms"]))
-            top = ", ".join(
-                f"{term} ({count})"
-                for term, count in sorted(terms.items(), key=lambda pair: (-pair[1], pair[0]))[:5]
+        if eligible:
+            critical_pending = sum(
+                row["severity"] == "critical" and row["review_state"] == "open" for row in eligible
             )
+            story.append(Spacer(1, 7))
             story.append(
-                Paragraph(f"Términos por cantidad de registros: {escape(top)}", styles["Meta"])
+                Paragraph(
+                    f"Revisadas: {reviewed} de {len(eligible)} ({100 * reviewed / len(eligible):.0f}%). "
+                    f"Pendientes: {counts['open']}. Pendientes de severidad crítica: {critical_pending}.",
+                    styles["BodyText"],
+                )
             )
-            for item in records:
-                story.append(KeepTogether(record_lines(item, styles, excerpt=True)))
-    if youtube:
-        story.append(Paragraph("YouTube · Enlaces de alertas individuales", styles["Heading2"]))
-        story.append(
-            Paragraph(
-                "Se indican las reglas locales y el enlace de cada alerta. Las cifras del resumen corresponden a los demás sitios y feeds.",
-                styles["Meta"],
+            terms = Counter(term for row in eligible for term in set(row["confirmed_terms"]))
+            top = ", ".join(f"{term} ({count})" for term, count in terms.most_common(5))
+            story.append(Paragraph(f"Términos más frecuentes: {escape(top)}.", styles["Meta"]))
+            origins = Counter(
+                (urlsplit(row["resource_url"]).hostname if row["resource_url"] else None)
+                or row["source"]
+                for row in eligible
             )
-        )
-        for item in youtube:
-            story.append(KeepTogether(record_lines(item, styles, excerpt=False)))
+            top = ", ".join(f"{name} ({count})" for name, count in origins.most_common(5))
+            story.append(Paragraph(f"Fuentes con más alertas: {escape(top)}.", styles["Meta"]))
+        if len(eligible) != len(rows):
+            story.append(Spacer(1, 7))
+            story.append(
+                Paragraph(
+                    "YouTube se muestra como referencias agrupadas, fuera de las métricas. "
+                    "Las etiquetas de revisión son de EchoScope Radar, no de YouTube.",
+                    styles["Meta"],
+                )
+            )
+        story.append(Paragraph("Detalle por publicación", styles["Heading2"]))
+        for label, title, parent, records in report_groups(rows):
+            header = [Paragraph(f"{escape(label)} · {escape(title[:300])}", styles["Heading3"])]
+            link = (
+                report_link(parent, "Abrir publicación original", styles["Meta"])
+                if parent
+                else None
+            )
+            header.append(link or Paragraph("Enlace original no disponible.", styles["Meta"]))
+            ordered = sorted(records, key=lambda row: (row["kind"] in DISCUSSIONS, row["date"]))
+            for index, item in enumerate(ordered):
+                story.append(
+                    KeepTogether(
+                        (header if index == 0 else [])
+                        + record_lines(item, styles, excerpt=item["provider"] != "YouTube")
+                    )
+                )
     if not rows:
         story.append(
             Paragraph("Sin alertas confirmadas en el intervalo seleccionado.", styles["Heading2"])
@@ -158,7 +244,7 @@ def record_lines(item, styles, *, excerpt):
     when = item["date"][:16].replace("T", " ")
     kind = KINDS.get(item["kind"], "Resultado")
     level = LEVELS[item["severity"]]
-    identity = f"{when} UTC · {kind} · {item['source']} · {level}"
+    identity = f"{when} UTC · {kind} · {item['source']} · {level} · {REVIEWS[item['review_state']]}"
     if item["job"] == "preview":
         identity += " · Vista previa"
     if excerpt and item["author"]:
@@ -185,19 +271,8 @@ def record_lines(item, styles, *, excerpt):
                 + ("…" if len(body) > start + 520 else "")
             )
         fields.append(Paragraph(escape(body), styles["Meta"]))
-    if item["url"]:
-        address = escape(item["url"], quote=True)
-        fields.append(
-            Paragraph(
-                f'<link href="{address}" color="#087684"><u>Abrir origen</u></link>', styles["Meta"]
-            )
-        )
-    if item["resource_url"] and item["resource_url"] != item["url"]:
-        address = escape(item["resource_url"], quote=True)
-        fields.append(
-            Paragraph(
-                f'<link href="{address}" color="#087684"><u>Abrir publicación relacionada</u></link>',
-                styles["Meta"],
-            )
-        )
+    if item["url"] and item["url"] != item["resource_url"]:
+        link = report_link(item["url"], "Abrir registro individual", styles["Meta"])
+        if link:
+            fields.append(link)
     return fields

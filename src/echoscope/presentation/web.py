@@ -39,7 +39,7 @@ from echoscope.application.discovery import BRAVE_KEY, TopicDiscovery, public_re
 from echoscope.application.ports import AuthRequired, ConnectorError, StorageUnavailable
 from echoscope.application.secrets import account_secrets, secrets_for_request
 from echoscope.connectors.youtube import youtube_headers
-from echoscope.connectors.youtube_comments import VIDEO_ID, video_titles
+from echoscope.connectors.youtube_comments import VIDEO_ID, video_id, video_titles
 from echoscope.domain.models import (
     HistoryQuery,
     Kind,
@@ -84,6 +84,7 @@ class SourceInput(StrictModel):
     enabled: bool = True
     relevant_only: bool = False
     token: str = Field(default="", max_length=4096)
+    resource_url: str | None = Field(default=None, max_length=2048)
 
 
 class ControlInput(StrictModel):
@@ -126,6 +127,7 @@ class NewCredential(StrictModel):
     provider: str = Field(max_length=30)
     name: str = Field(min_length=1, max_length=80)
     value: str = Field(min_length=1, max_length=4096)
+    provider_label: str | None = Field(default=None, max_length=80)
 
 
 class ReviewInput(StrictModel):
@@ -372,6 +374,7 @@ def result_data(result, sources, *, report=False):
         "resource_url": resource_link(message),
         "resource_id": message.resource_id if message.origin.startswith("youtube:") else None,
         "resource_title": message.resource_title,
+        "title": publication_title(message) if report else None,
         "provider": "YouTube" if message.origin.startswith("youtube:") else None,
         "tone": message_tone(message.text),
         **(
@@ -439,6 +442,7 @@ def config_data(config):
                     "",
                 ),
                 "minutes": job.interval_s / 60,
+                "resource_url": source.params.get("resource_url"),
                 "enabled": job.enabled,
                 "relevant_only": job.relevant_only,
                 "polling": source.type not in {"sim_live", "youtube_live", "youtube_channel_live"},
@@ -663,6 +667,7 @@ async def action(request):
             fields.enabled,
             fields.relevant_only,
             token_env,
+            fields.resource_url,
         )
         state.config = await service.save_source(form, fields.id, fields.token)
     elif name == "remove":
@@ -700,7 +705,9 @@ async def action(request):
             previous = secrets_for_request().get(YOUTUBE_KEY)
             if name == "credential-add":
                 fields = NewCredential.model_validate(data)
-                await state.vault.add(fields.provider, fields.name, fields.value)
+                await state.vault.add(
+                    fields.provider, fields.name, fields.value, fields.provider_label
+                )
             else:
                 await state.vault.change(
                     TextInput.model_validate(data).value, remove=name == "credential-remove"
@@ -798,7 +805,13 @@ def discovery_record(state, candidate):
     origin = (
         "youtube:discovery" if kind in {Kind.YOUTUBE_VIDEO, Kind.YOUTUBE_LIVE} else "search:index"
     )
-    message = Message(kind, origin, url or "", url or "", body, url=url, title=candidate["title"])
+    resource = url or ""
+    if url and origin.startswith("youtube:"):
+        try:
+            resource = video_id(url)
+        except ValueError:
+            pass
+    message = Message(kind, origin, url or "", resource, body, url=url, title=candidate["title"])
     return Result(-1, "preview", candidate["source"], Observation(message, matches))
 
 
@@ -826,8 +839,7 @@ async def export_report(state, fields):
         until = min(datetime.combine(end, time.max, UTC), datetime.now(UTC))
         query = HistoryQuery(since=since, until=until, matches_only=True, limit=500)
         sources = {source.id: source.label or source.id for source in state.config.sources}
-        records = []
-        seen = set()
+        observations = {}
 
         def collect(items):
             for item in items:
@@ -841,14 +853,11 @@ async def export_report(state, fields):
                     key = ("publication", message.url)
                 else:
                     key = (message.origin, message.external_id, message.text)
-                if (
-                    key not in seen
-                    and since <= message.captured_at <= until
-                    and any(m.confirmed for m in item.observation.matches)
+                if since <= message.captured_at <= until and any(
+                    m.confirmed for m in item.observation.matches
                 ):
-                    seen.add(key)
-                    records.append(result_data(item, sources, report=True))
-                    if len(records) > 5000:
+                    observations.setdefault(key, {})[alert_key(item)] = item
+                    if len(observations) > 5000:
                         raise ValueError(
                             "El período supera los 5.000 registros. Elegí un intervalo más corto."
                         )
@@ -866,6 +875,30 @@ async def export_report(state, fields):
         for (_, url), (_, discussion) in tuple(state.conversations.cache.items()):
             collect(preview_results(state, url, discussion))
         collect(tuple(state.recent_discoveries.values()))
+        states = await state.service.store.alert_reviews(
+            key for entries in observations.values() for key in entries
+        )
+        priority = {"threat": 4, "verified": 3, "dismissed": 2, "open": 1}
+        records = []
+        for entries in observations.values():
+            key = max(
+                entries,
+                key=lambda key: (
+                    priority[states.get(key, "open")],
+                    entries[key].job_id != "preview",
+                    bool(entries[key].observation.message.resource_title),
+                    key,
+                ),
+            )
+            records.append(
+                {
+                    **result_data(entries[key], sources, report=True),
+                    "review_state": states.get(key, "open"),
+                }
+            )
+        youtube = [item for item in records if item["provider"] == "YouTube"]
+        if youtube:
+            await group_video_titles(state, youtube)
         records.sort(key=lambda item: item["captured"], reverse=True)
         body = await asyncio.to_thread(report_pdf, records, start, end, state.practice)
     return web.Response(

@@ -12,7 +12,7 @@ const helpText = {
   press: ["Comentarios de prensa", "Aquí aparecen los comentarios de notas que ofrecen un feed accesible. También podés agregar un feed de comentarios desde Fuentes."],
   youtube: ["Videos de YouTube", "Agregá tu clave en Claves API y verificá el acceso en Tema y acceso. Los canales automáticos consultan videos recientes relacionados con tus términos. Para leer un video concreto, agregá su enlace en Fuentes."],
   live: ["Chat en vivo", "Los canales automáticos esperan un directo relacionado con tus términos. Para probar uno que está al aire, agregá el enlace del directo en Fuentes. YouTube debe tener el chat habilitado y accesible."],
-  reviews: ["Reseñas", "Agregá un RSS/Atom de reseñas desde Fuentes. Si tenés el enlace de la página, usá Detectar feed. Una nota sin un feed de reseñas no aparecerá en esta pestaña."],
+  reviews: ["Cómo recibir reseñas", ""],
   forum: ["Foros", "Agregá el RSS o Atom público del foro para recibir sus publicaciones. Abrí el enlace de origen para ver la conversación completa."],
   social: ["Redes sociales", "Podés seguir respuestas de un hilo público de Bluesky. Las publicaciones de otras redes encontradas por búsqueda abren en su sitio de origen."],
   alerts: ["Cómo leer las alertas", "Una alerta confirma que apareció un término de tu lista. «Para revisar» reúne aproximaciones. Abrí un resultado para ver el contexto o descargá un PDF por fechas."],
@@ -73,6 +73,10 @@ function button(text, className, callback, title) {
 }
 
 function showHelp(key) {
+  if (key === "reviews") {
+    $("reviews-guide").showModal();
+    return;
+  }
   const [title, body] = helpText[key];
   $("help-title").textContent = title;
   $("help-text").textContent = body;
@@ -441,7 +445,9 @@ function renderPanel(key, rows, statuses) {
   if (needsKey) empty = "Agregá una clave en Claves API y verificá el acceso a YouTube desde Tema y acceso.";
   else if (key === "live" && waiting) empty = "Podés esperar al siguiente ciclo o agregar el enlace de un directo que esté al aire y tenga chat habilitado.";
   else if (key === "youtube" && applicable.some((item) => item.detail === "SIN RESULTADOS")) empty = "La última consulta no devolvió resultados para alguna fuente. Revisá los términos del canal o agregá un video por su enlace.";
-  else if (key === "reviews" && !ui.practice) empty = "Todavía no se recibieron reseñas. Agregá un RSS/Atom de reseñas desde Fuentes o usá Detectar feed en una página.";
+  else if (key === "reviews" && !ui.practice) empty = applicable.length
+    ? "No hay reseñas para mostrar con los filtros actuales. Podés revisar el estado de tus fuentes o consultar la guía."
+    : "Todavía no hay páginas de reseñas configuradas. Empezá con el enlace de la página donde las leés.";
   const signature = JSON.stringify([empty, rows]);
   if (signature === stream.signature) return;
   stream.signature = signature;
@@ -452,7 +458,7 @@ function renderPanel(key, rows, statuses) {
       choosePage("credentials");
       $("credential-provider").value = "youtube";
       $("credential-name").focus();
-    }) : button("Agregar fuente de reseñas", "button subtle", () => showSource({ type_label: "Reseñas de un sitio (RSS/Atom)" }));
+    }) : button("Cómo recibir reseñas", "button subtle", () => showHelp("reviews"));
     stream.list.firstElementChild.append(node("br", ""), action);
   }
 }
@@ -600,9 +606,11 @@ function sourceFields() {
   const feed = type.includes("RSS");
   const comments = type.startsWith("Comentarios de un sitio");
   const reviews = type.startsWith("Reseñas de un sitio");
-  $("address-label").textContent = feed ? (comments || reviews ? "Enlace del feed o de la página" : "Enlace HTTPS al RSS/Atom") :
+  $("address-label").textContent = reviews ? "Enlace de la página de reseñas" : feed ? (comments ? "Enlace del feed o de la página" : "Enlace HTTPS al RSS/Atom") :
     (type.includes("Bluesky") ? "Enlace de la publicación de Bluesky" : type.startsWith("Canal") ? "Enlace o @nombre del canal de YouTube" : "Enlace del video o directo");
   $("discover").hidden = !comments && !reviews;
+  $("discover").textContent = reviews ? "Buscar reseñas en la página" : "Detectar feed";
+  $("review-source-hint").hidden = !reviews;
   $("feed-token").hidden = !feed;
   const minutes = $("source-minutes");
   minutes.min = type.includes("directos automáticos") ? "30" : (type.includes("videos automáticos") || type.includes("Comentarios de un video") ? "5" : "1");
@@ -616,6 +624,7 @@ function showSource(job = {}) {
   $("source-id").value = job.id ?? "";
   $("source-name").value = job.name ?? "";
   $("source-address").value = job.address ?? "";
+  $("source-parent").value = job.resource_url ?? "";
   $("source-type").replaceChildren(...ui.types.map((name) => node("option", "", name)));
   $("source-type").value = job.type_label ?? ui.types[0];
   $("source-minutes").value = Math.max(1, Math.ceil(job.minutes ?? 15));
@@ -767,15 +776,30 @@ $("hide-alerts").addEventListener("click", () => {
   toggleAlerts();
 });
 $("add-source").addEventListener("click", () => showSource());
+$("add-review-source").addEventListener("click", () => {
+  $("reviews-guide").close();
+  showSource({ type_label: "Reseñas de un sitio (RSS/Atom)" });
+});
 $("source-type").addEventListener("change", sourceFields);
+$("source-address").addEventListener("input", () => { $("source-parent").value = ""; });
 $("discover").addEventListener("click", async () => {
   const reviews = $("source-type").value.startsWith("Reseñas de un sitio");
-  $("source-feedback").textContent = "Buscando un feed anunciado por la página…";
+  if (!$("source-address").reportValidity()) return;
+  $("discover").disabled = true;
+  $("source-feedback").textContent = reviews ? "Buscando una lista pública de reseñas…" : "Buscando un feed anunciado por la página…";
   try {
-    const data = await api(reviews ? "discover-reviews" : "discover", { value: $("source-address").value });
-    if (data.url) $("source-address").value = data.url;
-    $("source-feedback").textContent = data.url ? "Feed encontrado. Guardá la fuente para consultarlo." : `La página no anuncia un feed público de ${reviews ? "reseñas" : "comentarios"}.`;
+    const address = $("source-address").value.trim();
+    const data = await api(reviews ? "discover-reviews" : "discover", { value: address });
+    if (!$("source-dialog").open || $("source-address").value.trim() !== address) return;
+    if (data.url) {
+      $("source-address").value = data.url;
+      if (reviews && data.url !== address) $("source-parent").value = address;
+    }
+    $("source-feedback").textContent = reviews
+      ? (data.url ? "Encontramos una lista de reseñas. Elegí Guardar fuente para empezar a consultarla." : "No encontramos una lista pública de reseñas. Probá con otra página o pedile al sitio el enlace a su lista de reseñas (RSS o Atom).")
+      : (data.url ? "Feed encontrado. Guardá la fuente para consultarlo." : "La página no anuncia un feed público de comentarios.");
   } catch (error) { $("source-feedback").textContent = error.message; }
+  finally { $("discover").disabled = false; }
 });
 $("source-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -787,6 +811,7 @@ $("source-form").addEventListener("submit", async (event) => {
       id: $("source-id").value || null, label: $("source-name").value, type_label: $("source-type").value,
       address: $("source-address").value, minutes: Number($("source-minutes").value), enabled: $("source-enabled").checked,
       relevant_only: $("source-relevant").checked, token: $("source-token").value,
+      resource_url: $("source-parent").value || null,
     });
     applyConfig(data);
     $("source-token").value = "";
@@ -814,24 +839,46 @@ const youtubeCheck = button("Verificar acceso", "button subtle", async () => {
 });
 $("youtube-access").append(button("Administrar claves", "button subtle", () => choosePage("credentials")), youtubeCheck, youtubeCheckStatus);
 
-function renderVault(data) {
+function credentialFields() {
   const select = $("credential-provider");
-  const previous = select.value;
-  select.replaceChildren(...data.providers.map(({ id, label }) => {
+  const custom = select.value === "other";
+  $("credential-custom").hidden = !custom;
+  $("credential-provider-label").required = custom;
+  $("credential-mode").textContent = select.selectedOptions[0]?.dataset.integrated === "true"
+    ? "EchoScope puede usar esta clave para consultar el servicio."
+    : "Solo almacenamiento: esta clave se guarda para una futura integración.";
+}
+
+function renderVault(data, nextProvider = null) {
+  const select = $("credential-provider");
+  const previous = nextProvider ?? select.value;
+  const groups = new Map();
+  for (const { id, label, group, integrated } of data.providers) {
+    if (!groups.has(group)) {
+      const section = node("optgroup");
+      section.label = group;
+      groups.set(group, section);
+    }
     const option = node("option", "", label);
     option.value = id;
-    return option;
-  }));
-  if (previous) select.value = previous;
+    option.dataset.integrated = String(integrated);
+    groups.get(group).append(option);
+  }
+  const other = node("option", "", "Otro proveedor…");
+  other.value = "other";
+  select.replaceChildren(...groups.values(), other);
+  if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+  credentialFields();
   $("vault-status").textContent = data.persistent ? "Las claves se guardan cifradas en tu cuenta." : "En modo local las claves agregadas se usan durante esta sesión.";
-  const providers = new Map(data.providers.map((item) => [item.id, item.label]));
+  const providers = new Map(data.providers.map((item) => [item.id, item]));
   const available = data.providers.filter((item) => item.available).map((item) => item.label);
   if (data.searx_available) available.push("SearXNG");
   $("credential-providers").textContent = `Proveedores con acceso: ${available.join(", ") || "ninguno"}.`;
   const entries = data.entries.map((entry) => {
     const row = node("div", "credential-entry");
-    row.append(node("strong", "", entry.name), node("p", "metadata", `${providers.get(entry.provider)} · ${entry.active ? "En uso" : "Disponible"}`));
-    if (!entry.active) row.append(button("Usar", "button subtle", () => changeCredential("credential-use", { value: entry.id })));
+    const provider = providers.get(entry.provider);
+    row.append(node("strong", "", entry.name), node("p", "metadata", `${provider.label} · ${provider.integrated ? (entry.active ? "En uso" : "Disponible") : "Solo almacenamiento"}`));
+    if (provider.integrated && !entry.active) row.append(button("Usar", "button subtle", () => changeCredential("credential-use", { value: entry.id })));
     row.append(button("Quitar", "button subtle", () => {
       if (window.confirm(`¿Quitar la clave «${entry.name}»?`)) changeCredential("credential-remove", { value: entry.id });
     }));
@@ -842,7 +889,9 @@ function renderVault(data) {
 
 async function changeCredential(action, payload) {
   try {
-    renderVault(await api(action, payload));
+    const data = await api(action, payload);
+    const created = payload.provider === "other" ? data.entries.at(-1)?.provider : null;
+    renderVault(data, created);
     $("credential-feedback").textContent = "Claves actualizadas.";
     await refresh(true);
     return true;
@@ -852,12 +901,20 @@ async function changeCredential(action, payload) {
   }
 }
 
+$("credential-provider").addEventListener("change", credentialFields);
 $("credential-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   event.submitter.disabled = true;
   const value = $("credential-value").value;
   $("credential-value").value = "";
-  if (await changeCredential("credential-add", { provider: $("credential-provider").value, name: $("credential-name").value, value })) $("credential-name").value = "";
+  const provider = $("credential-provider").value;
+  if (await changeCredential("credential-add", {
+    provider, name: $("credential-name").value, value,
+    provider_label: provider === "other" ? $("credential-provider-label").value : null,
+  })) {
+    $("credential-name").value = "";
+    $("credential-provider-label").value = "";
+  }
   event.submitter.disabled = false;
 });
 

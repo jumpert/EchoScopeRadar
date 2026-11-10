@@ -173,7 +173,7 @@ async def live_fixture(monkeypatch):
     await server.start()
 
     async def chat(*args):
-        return "chat-1"
+        return "chat-1", "Directo de prueba"
 
     monkeypatch.setattr(YouTubeLive, "_chat", chat)
     monkeypatch.setattr(
@@ -199,6 +199,7 @@ async def test_youtube_grpc_reconnect_and_terminal_states(live_fixture):
         first = await anext(connection)
         assert first.messages[0].author == "Autor gRPC"
         assert first.messages[0].resource_id == "01234567890"
+        assert first.messages[0].resource_title == "Directo de prueba"
         with pytest.raises(Transient):
             await anext(connection)
     async with aclosing(adapter.stream(Request(source, first.checkpoint, 4))) as connection:

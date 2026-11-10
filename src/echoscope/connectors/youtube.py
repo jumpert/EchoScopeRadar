@@ -86,7 +86,7 @@ class YouTubeLive:
             ) as session:
                 async with session.get(
                     VIDEO_ENDPOINT,
-                    params={"part": "liveStreamingDetails", "id": video_id},
+                    params={"part": "liveStreamingDetails,snippet", "id": video_id},
                     headers=headers,
                     allow_redirects=False,
                 ) as response:
@@ -115,9 +115,10 @@ class YouTubeLive:
                         raise SourceUnavailable()
         except (aiohttp.ClientError, ValueError):
             raise Transient() from None
-        details = data["items"][0].get("liveStreamingDetails", {})
+        item = data["items"][0]
+        details = item.get("liveStreamingDetails", {})
         if chat := details.get("activeLiveChatId"):
-            return chat
+            return chat, item.get("snippet", {}).get("title")
         if details.get("actualEndTime"):
             raise SourceEnded()
         if details.get("scheduledStartTime") and not details.get("actualStartTime"):
@@ -133,7 +134,7 @@ class YouTubeLive:
             raise SourceUnavailable() from None
         headers = youtube_headers(request.source.credential)
         video_id = YouTubeParams.model_validate(request.source.params).video_id
-        chat = await self._chat(video_id, headers, request.timeout_s)
+        chat, title = await self._chat(video_id, headers, request.timeout_s)
         checkpoint = json.loads(request.checkpoint) if request.checkpoint else {}
         gap = bool(checkpoint and checkpoint.get("chat") != chat)
         page = None if gap else checkpoint.get("page")
@@ -181,6 +182,7 @@ class YouTubeLive:
                                     or None,
                                     f"https://www.youtube.com/watch?v={video_id}",
                                     parse_date(snippet.published_at),
+                                    resource_title=title,
                                 )
                             )
                     page = response.next_page_token or page

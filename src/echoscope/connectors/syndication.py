@@ -61,10 +61,13 @@ def public_url(url):
 class FeedParams(StrictModel):
     url: str
     kind: str = "FEED_ENTRY"
+    resource_url: str | None = None
 
     @model_validator(mode="after")
     def endpoint(self):
         public_url(self.url)
+        if self.resource_url:
+            public_url(self.resource_url)
         if Kind(self.kind) == Kind.LIVE_CHAT:
             raise ValueError("Un feed no declara chat en vivo")
         return self
@@ -206,7 +209,7 @@ def parse_feed(body: bytes, params: FeedParams) -> tuple[Message, ...]:
                     Kind(params.kind),
                     origin,
                     identifier,
-                    params.url,
+                    params.resource_url or params.url,
                     content,
                     author,
                     url=link,

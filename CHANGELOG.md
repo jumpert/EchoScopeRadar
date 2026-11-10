@@ -1,5 +1,11 @@
 # Historial de versiones
 
+## 0.8.0
+
+- Guía interactiva de reseñas que abre el formulario preparado para buscar una lista pública desde el enlace de una página.
+- Catálogo de claves para redes sociales e inteligencia artificial, con proveedores personalizados. Los proveedores sin integración solo almacenan credenciales.
+- PDF agrupado por publicación original, con enlaces y estado de revisión. Incluye resumen local de pendientes, verificadas, descartadas y marcadas como amenaza. YouTube se muestra como referencias agrupadas, fuera de las métricas.
+
 ## 0.7.0
 
 - Comentarios de YouTube agrupados por video, con título, hora y autor.

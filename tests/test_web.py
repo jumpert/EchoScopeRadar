@@ -5,6 +5,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from echoscope.domain.models import Kind, Match, Message, Severity
 from echoscope.domain.rules import Rule, evaluate
+from echoscope.presentation.report import report_pdf
 from echoscope.presentation.web import KEY, create_app, fragments, publication_display, safe_url
 
 
@@ -45,7 +46,52 @@ def test_publications_keep_title_separate_and_omit_unrelated_body():
         )
 
 
-async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path):
+async def test_review_guide_saves_publication_address_with_detected_list(tmp_path, monkeypatch):
+    app = create_app(tmp_path / "review-source.sqlite", practice=True, auto_start=False)
+    page = "https://example.com/experiencias"
+    feed = "https://example.com/resenas.atom"
+
+    async def detect(self, address):
+        assert address == page
+        return feed
+
+    monkeypatch.setattr(
+        "echoscope.application.administration.Administration.detect_reviews", detect
+    )
+    async with TestClient(TestServer(app)) as client:
+        app[KEY].authority = client.make_url("/").authority
+        bootstrap = await (await client.get("/api/bootstrap")).json()
+        headers = {
+            "Origin": str(client.make_url("/")).rstrip("/"),
+            "X-EchoScope-Token": bootstrap["token"],
+        }
+        detected = await client.post("/api/discover-reviews", json={"value": page}, headers=headers)
+        address = (await detected.json())["url"]
+        saved = await client.post(
+            "/api/source",
+            json={
+                "label": "Reseñas del sitio",
+                "type_label": "Reseñas de un sitio (RSS/Atom)",
+                "address": address,
+                "resource_url": page,
+                "minutes": 15,
+            },
+            headers=headers,
+        )
+        assert saved.status == 200
+        config = await app[KEY].service.store.configuration()
+        source = next(item for item in config.sources if item.label == "Reseñas del sitio")
+        assert source.params == {"kind": "REVIEW", "url": feed, "resource_url": page}
+
+
+async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path, monkeypatch):
+    exported = []
+
+    def capture(rows, *args):
+        exported.extend(rows)
+        return report_pdf(rows, *args)
+
+    monkeypatch.setattr("echoscope.presentation.web.report_pdf", capture)
     app = create_app(tmp_path / "web.sqlite", practice=True, auto_start=False)
     async with TestClient(TestServer(app)) as client:
         base = client.make_url("/")
@@ -119,6 +165,7 @@ async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path):
         )
         assert report.status == 200 and report.content_type == "application/pdf"
         assert (await report.read()).startswith(b"%PDF-")
+        assert sum(row["review_state"] == "threat" for row in exported) == 1
         assert all(item["kind"] == "REVIEW" for item in data["panels"]["reviews"])
         assert all(item["kind"] != "REVIEW" for item in data["panels"]["press"])
         assert any(mark for item in data["panels"]["press"] for _, mark in item["fragments"])

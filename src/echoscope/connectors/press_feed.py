@@ -33,6 +33,8 @@ class PressFeed:
                         targets.setdefault(
                             item.url, {"feed": None, "checked": False, "cursor": None}
                         )
+                        if item.title:
+                            targets[item.url]["title"] = item.title[:300]
                 yield replace(batch, checkpoint=request.checkpoint)
 
         # Bound discovery and follow-up traffic. URLs and validators survive a 304 on the main RSS.
@@ -97,7 +99,12 @@ class PressFeed:
                         target[cursor] = batch.checkpoint
                         yield Batch(
                             tuple(
-                                replace(item, resource_id=article, url=item.url or article)
+                                replace(
+                                    item,
+                                    resource_id=article,
+                                    resource_title=target.get("title"),
+                                    url=item.url or article,
+                                )
                                 for item in batch.messages
                             ),
                             json.dumps(state),

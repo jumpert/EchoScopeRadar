@@ -115,6 +115,7 @@ class SourceForm:
     enabled: bool = True
     relevant_only: bool = False
     token_env: str = ""
+    resource_url: str | None = None
 
     def models(self, identifier, rule_set, previous=None):
         connector, kind = SOURCE_TYPES[self.type_label]
@@ -156,6 +157,11 @@ class SourceForm:
             params = previous.params | params
             if connector not in RSS_TYPES and previous.credential:
                 credential = previous.credential
+        if connector in RSS_TYPES:
+            if self.resource_url and kind == "REVIEW":
+                params["resource_url"] = public_url(self.resource_url)
+            elif kind != "REVIEW" or (previous and previous.params.get("url") != endpoint):
+                params.pop("resource_url", None)
         retention = previous.retention_days if previous else 30
         if connector in {"youtube_comments", "youtube_channel"}:
             retention = min(retention, 7)

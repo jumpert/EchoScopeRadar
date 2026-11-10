@@ -2,15 +2,15 @@
 
 Centro de monitoreo para comentarios, reseñas, feeds y chats de directos. Cada panel muestra los mensajes recibidos, incluidas las capturas sin coincidencias. Las reglas resaltan términos en el texto original y agrupan sus apariciones por alerta.
 
-## Versión 0.7.0 · Revisión de alertas y cuentas de servidor
+## Versión 0.8.0 · Reseñas guiadas y reportes por publicación
 
-En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa, YouTube, Bluesky y foros autorizados desde el navegador. Abrí **Probar EchoScope Radar.cmd** para practicar con datos simulados. **Buscar por tema** muestra enlaces y conversaciones disponibles. **Descargar PDF** exporta las alertas confirmadas del período que elijas.
+En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa, YouTube, Bluesky y foros autorizados desde el navegador. Abrí **Probar EchoScope Radar.cmd** para practicar con datos simulados. En **Reseñas**, elegí **Cómo recibir reseñas** para empezar con el enlace de una página. **Descargar PDF** agrupa las alertas del período por publicación original y muestra su estado actual de revisión.
 
 - [Guía para personal administrativo](docs/uso-administrativo.md)
 - [Pruebas y notas de prensa de Uruguay](docs/fuentes-uruguay.md)
 - [Historial de versiones](CHANGELOG.md)
 
-Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/0.7.0/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`.
+Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/0.8.0/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`.
 
 Para instalar el modo compartido con inicio de sesión HTTPS, seguí la [guía del servidor](docs/servidor.md).
 

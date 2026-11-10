@@ -93,7 +93,13 @@ async def test_press_only_discovers_on_topic_and_tracks_comments_after_304(monke
                 if request.checkpoint
                 else (
                     Message(
-                        Kind.NEWS_ARTICLE, "rss:example.com", "1", feed, "Ejército", url=article
+                        Kind.NEWS_ARTICLE,
+                        "rss:example.com",
+                        "1",
+                        feed,
+                        "Ejército",
+                        url=article,
+                        title="Ejército publica comunicado",
                     ),
                     Message(
                         Kind.NEWS_ARTICLE,
@@ -138,6 +144,11 @@ async def test_press_only_discovers_on_topic_and_tracks_comments_after_304(monke
         (Kind.REVIEW, article),
     ]
     assert (comments, "child-v1") in seen
+    assert all(
+        item.resource_title == "Ejército publica comunicado"
+        for batch in second
+        for item in batch.messages
+    )
 
 
 async def test_channel_discovery_only_fetches_confirmed_topic_comments(monkeypatch):

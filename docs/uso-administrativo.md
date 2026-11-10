@@ -43,7 +43,7 @@ En la mesa elegí **Descargar PDF**, seleccioná las fechas de captura en UTC y 
 |---|---|
 | Noticias de un medio | Nombre para reconocerlo y enlace HTTPS al RSS oficial del medio. Elegí cada cuántos minutos consultarlo. |
 | Comentarios de una nota | Pegá el enlace de la nota y elegí **Detectar feed**. Si el sitio anuncia un feed de comentarios, el formulario completa el enlace. Si ya tenés un feed autorizado, pegalo directamente. |
-| Reseñas de un sitio | Elegí **Reseñas de un sitio (RSS/Atom)** y pegá el enlace al feed autorizado que las publica. |
+| Reseñas de un sitio | En **Reseñas → Cómo recibir reseñas → Agregar una página de reseñas**, pegá la dirección de la página donde las leés. Elegí **Buscar reseñas en la página**. Si se encuentra una lista pública, guardá la fuente y usá **Fuentes → Consultar ahora** con el seguimiento activo. Si no se encuentra, probá con otra página o pedile al sitio el enlace de su lista de reseñas (RSS o Atom) para pegarlo directamente. |
 | Un video de YouTube | Pegá el enlace del video y seleccioná **Comentarios de un video de YouTube**. Usá **Tema y acceso → Cargar clave** para ingresar la clave de YouTube Data API que te haya entregado el responsable de la cuenta. |
 | Buscar videos por tema | Con la clave cargada, escribí el tema y elegí **Buscar videos**. Seleccioná uno de los resultados y elegí **Seguir comentarios del video**. |
 | Un chat de YouTube en directo | Pegá el enlace en **Chat de un directo de YouTube**. El chat debe estar activo y habilitado. El panel lo identifica como **solo sesión**. |

@@ -99,9 +99,9 @@
     </section>
     <section id="credentials-page" role="tabpanel" aria-labelledby="tab-credentials" class="settings-page" hidden>
       <div class="section-heading"><div><p class="eyebrow">CONFIGURACIÓN</p><h1>Claves API</h1><p id="vault-status"></p></div></div>
-      <details class="inline-guide"><summary>Ayuda paso a paso</summary><ol><li>Elegí un proveedor y un nombre que te permita reconocer la clave.</li><li>Pegá la clave y guardala. La primera clave de cada proveedor se activa automáticamente.</li><li>Si tenés varias, usá la que corresponda a esta búsqueda. Los proveedores disponibles reciben el texto de la consulta.</li></ol></details>
+      <details class="inline-guide"><summary>Ayuda paso a paso</summary><ol><li>Elegí el servicio que emitió tu clave. Si no aparece, elegí Otro proveedor y escribí su nombre.</li><li>Poné un nombre reconocible a la clave, pegala y guardala.</li><li>Las claves de servicios integrados se pueden activar desde Mis claves. Para los demás, EchoScope guarda la clave para una futura integración.</li></ol></details>
       <div class="settings-grid">
-        <form id="credential-form" class="card"><h2>Agregar clave</h2><label for="credential-provider">Proveedor</label><select id="credential-provider" required></select><label for="credential-name">Nombre de la clave</label><input id="credential-name" maxlength="80" placeholder="Ejemplo: cuenta institucional" required><label for="credential-value">Clave API</label><input id="credential-value" type="password" maxlength="4096" autocomplete="off" required><button type="submit" class="button primary">Guardar clave</button><p id="credential-feedback" role="status"></p></form>
+        <form id="credential-form" class="card"><h2>Agregar clave</h2><label for="credential-provider">Proveedor</label><select id="credential-provider" aria-describedby="credential-mode" required></select><p id="credential-mode" class="metadata"></p><div id="credential-custom" hidden><label for="credential-provider-label">Nombre del proveedor</label><input id="credential-provider-label" maxlength="80" placeholder="Ejemplo: servicio institucional"></div><label for="credential-name">Nombre de la clave</label><input id="credential-name" maxlength="80" placeholder="Ejemplo: cuenta institucional" required><label for="credential-value">Clave API o token</label><input id="credential-value" type="password" maxlength="4096" autocomplete="off" required><button type="submit" class="button primary">Guardar clave</button><p id="credential-feedback" role="status"></p></form>
         <div class="card"><h2>Mis claves</h2><div id="credential-list"></div><p id="credential-providers"></p></div>
       </div>
     </section>
@@ -112,6 +112,18 @@
   <dialog id="help-dialog" aria-labelledby="help-title">
     <div class="dialog-head"><div><p class="eyebrow">AYUDA</p><h2 id="help-title"></h2></div><button class="icon-button" type="button" data-close="help-dialog" aria-label="Cerrar ayuda">×</button></div>
     <p class="metadata" id="help-text"></p>
+  </dialog>
+
+  <dialog id="reviews-guide" aria-labelledby="reviews-guide-title">
+    <div class="dialog-head"><div><p class="eyebrow">GUÍA PASO A PASO</p><h2 id="reviews-guide-title">Cómo recibir reseñas</h2></div><button class="icon-button" type="button" data-close="reviews-guide" aria-label="Cerrar ayuda">×</button></div>
+    <ol>
+      <li>Abrí en el navegador la página donde se leen las reseñas. Copiá la dirección de esa página.</li>
+      <li>Elegí <strong>Agregar una página de reseñas</strong>. Poné un nombre que reconozcas y pegá la dirección que copiaste.</li>
+      <li>Elegí <strong>Buscar reseñas en la página</strong>. EchoScope buscará una lista pública de reseñas que pueda leer automáticamente.</li>
+      <li>Si la encuentra, elegí <strong>Guardar fuente</strong>. Con el seguimiento activo, entrá a <strong>Fuentes → Consultar ahora</strong> o esperá la próxima consulta. Podés ver el resultado en la columna de estado.</li>
+    </ol>
+    <p><strong>Si no se encuentra una lista:</strong> algunas páginas muestran reseñas en el navegador pero no ofrecen una lista pública para importar. Pedile al sitio el enlace de su lista de reseñas (también llamada RSS o Atom) o probá con otra página. Si ya tenés ese enlace, pegalo directamente y guardá la fuente.</p>
+    <div class="dialog-actions"><button class="button primary" type="button" id="add-review-source">Agregar una página de reseñas</button></div>
   </dialog>
 
   <dialog id="topic-search-dialog" aria-labelledby="topic-search-title">
@@ -132,7 +144,7 @@
 
   <dialog id="report-dialog" aria-labelledby="report-title">
     <div class="dialog-head"><div><p class="eyebrow">EXPORTACIÓN</p><h2 id="report-title">Reporte de alertas</h2></div><button type="button" class="icon-button" data-close="report-dialog" aria-label="Cerrar reporte">×</button></div>
-    <p class="metadata">Incluye enlaces y alertas confirmadas del historial disponible y de las vistas previas de esta sesión. Las fechas corresponden a la captura (UTC).</p>
+    <p class="metadata">Agrupa los registros con alertas por publicación original e incluye el estado actual de revisión. Las fechas corresponden a la captura (UTC).</p>
     <form id="report-form" class="source-form">
       <label for="report-start">Desde</label><input type="date" id="report-start" required>
       <label for="report-end">Hasta</label><input type="date" id="report-end" required>
@@ -145,9 +157,11 @@
     <div class="dialog-head"><div><p class="eyebrow">CONFIGURACIÓN</p><h2 id="source-title">Agregar fuente</h2></div><button type="button" class="icon-button" data-close="source-dialog" aria-label="Cerrar formulario">×</button></div>
     <form id="source-form" class="source-form">
       <input type="hidden" id="source-id">
+      <input type="hidden" id="source-parent">
       <label for="source-name">Nombre visible</label><input id="source-name" maxlength="80" required>
       <label for="source-type">Tipo de fuente</label><select id="source-type" required></select>
       <label for="source-address" id="address-label">Enlace</label><div class="input-row"><input id="source-address" maxlength="2048" required><button id="discover" type="button" class="button subtle" hidden>Detectar feed</button></div>
+      <p id="review-source-hint" class="metadata" hidden>Pegá el enlace normal de la página donde ves las reseñas y elegí «Buscar reseñas en la página». Si ya te dieron el enlace de la lista RSS o Atom, pegalo y guardá directamente.</p>
       <div id="feed-token"><label for="source-token">Token del feed (opcional)</label><input id="source-token" type="password" autocomplete="off" maxlength="4096"></div>
       <label for="source-minutes">Consultar cada cuántos minutos</label><input id="source-minutes" type="number" min="1" max="1440" value="15" required>
       <label class="check"><input id="source-enabled" type="checkbox" checked> Activar fuente</label>

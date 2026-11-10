@@ -103,6 +103,8 @@ class BlueskyThread:
         root = result.get("thread", {})
         if not root.get("post"):
             raise Forbidden()
+        root_text = root["post"].get("record", {}).get("text")
+        title = " ".join(root_text.split())[:150] if isinstance(root_text, str) else None
         pending = deque(root.get("replies", []))
         messages = []
         partial = root["post"].get("replyCount", 0) > len(pending)
@@ -127,6 +129,7 @@ class BlueskyThread:
                         author.get("did"),
                         url,
                         parse_date(record.get("createdAt")),
+                        resource_title=title or None,
                     )
                 )
         partial |= bool(pending)

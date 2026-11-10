@@ -54,6 +54,30 @@ async def test_https_accounts_isolate_credentials_and_alert_reviews(tmp_path, mo
         ).status == 403
         result = await client.post("/api/credential-add", json=payload, headers=a_headers, **a)
         assert result.status == 200 and "fake-youtube-secret" not in await result.text()
+        for provider, label in [("openai", None), ("other", "Proveedor institucional")]:
+            result = await client.post(
+                "/api/credential-add",
+                json={
+                    "provider": provider,
+                    "provider_label": label,
+                    "name": "Ensayo",
+                    "value": "fake-future-secret",
+                },
+                headers=a_headers,
+                **a,
+            )
+            assert result.status == 200 and "fake-future-secret" not in await result.text()
+            vault = await result.json()
+            entry = vault["entries"][-1]
+            assert not entry["active"]
+            assert not next(p for p in vault["providers"] if p["id"] == entry["provider"])[
+                "integrated"
+            ]
+            assert (
+                await client.post(
+                    "/api/credential-use", json={"value": entry["id"]}, headers=a_headers, **a
+                )
+            ).status == 400
         assert not (await (await client.get("/api/bootstrap", **b)).json())["credentials"][
             "entries"
         ]
@@ -61,6 +85,7 @@ async def test_https_accounts_isolate_credentials_and_alert_reviews(tmp_path, mo
             "credential_vault"
         )
         assert "fake-youtube-secret" not in secret_record
+        assert "fake-future-secret" not in secret_record
         assert not accounts.workspaces["bob"].secrets
         key = "1" * 64
         assert (
@@ -79,6 +104,7 @@ async def test_https_accounts_isolate_credentials_and_alert_reviews(tmp_path, mo
     try:
         state = await restarted.workspace("alice")
         assert state.secrets["ECHOSCOPE_YOUTUBE_KEY"] == "fake-youtube-secret"
+        assert list(state.vault.custom().values()) == ["Proveedor institucional"]
     finally:
         for state in restarted.workspaces.values():
             await state.service.close()
