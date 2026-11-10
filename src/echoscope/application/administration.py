@@ -1,5 +1,4 @@
 import asyncio
-import os
 from dataclasses import dataclass, replace
 from importlib.resources import as_file, files
 from uuid import uuid4
@@ -14,7 +13,8 @@ from echoscope.storage.sqlite import Store
 
 from .config import Configuration, Credential, Job, RuleSpec, Source, read_config
 from .engine import Radar, validate_config
-from .ports import AuthRequired, JobCommand
+from .ports import AuthRequired, Forbidden, JobCommand
+from .secrets import secrets_for_request
 
 YOUTUBE_KEY = "ECHOSCOPE_YOUTUBE_KEY"
 RULE_SET = "defensa"
@@ -255,6 +255,8 @@ class Administration:
             if worker.done():
                 await worker
             self.radar, self.worker = radar, worker
+            if secrets_for_request().get(YOUTUBE_KEY):
+                await self._recover_youtube()
         finally:
             ready.cancel()
             await asyncio.gather(ready, return_exceptions=True)
@@ -274,7 +276,7 @@ class Administration:
         radar = self.radar
         snapshots = dict(radar.jobs) if radar else await self.store.snapshots()
         results = await self.messages(query)
-        return snapshots, results, bool(radar), bool(os.environ.get(YOUTUBE_KEY))
+        return snapshots, results, bool(radar), bool(secrets_for_request().get(YOUTUBE_KEY))
 
     async def messages(self, query):
         radar = self.radar
@@ -331,18 +333,19 @@ class Administration:
                 job = job.model_copy(update={"id": old.id, "timeout_s": old.timeout_s})
             sources = [item for item in config.sources if item.id != source.id] + [source]
             jobs = [item for item in config.jobs if item.id != job.id] + [job]
-            old_token = os.environ.get(token_name)
+            environment = secrets_for_request()
+            old_token = environment.get(token_name)
             if token and source.type in RSS_TYPES:
-                os.environ[token_name] = token
+                environment[token_name] = token
             try:
                 return await self._apply(
                     config.model_copy(update={"sources": sources, "jobs": jobs})
                 )
             except Exception:
                 if old_token is None:
-                    os.environ.pop(token_name, None)
+                    environment.pop(token_name, None)
                 else:
-                    os.environ[token_name] = old_token
+                    environment[token_name] = old_token
                 raise
 
     async def remove_source(self, job_id):
@@ -403,12 +406,20 @@ class Administration:
         ):
             raise ValueError("Ingresá una clave de API sin espacios.")
         async with self.guard:
-            os.environ[YOUTUBE_KEY] = key
-            if self.radar:
-                for item in list(self.radar.jobs.values()):
-                    if item.job.enabled and not item.paused and item.detail == AuthRequired.label:
-                        if item.source.credential and item.source.credential.env == YOUTUBE_KEY:
-                            await self.radar.execute(JobCommand(item.job.id, "recover"))
+            secrets_for_request()[YOUTUBE_KEY] = key
+            await self._recover_youtube()
+
+    async def _recover_youtube(self):
+        if self.radar:
+            for item in tuple(self.radar.jobs.values()):
+                if (
+                    item.job.enabled
+                    and not item.paused
+                    and item.detail in {AuthRequired.label, Forbidden.label}
+                    and item.source.credential
+                    and item.source.credential.env == YOUTUBE_KEY
+                ):
+                    await self.radar.execute(JobCommand(item.job.id, "recover"))
 
     async def search(self, terms, *, live=False):
         if not terms.strip():

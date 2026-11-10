@@ -7,6 +7,7 @@ import json
 import os
 import re
 import secrets
+import ssl
 import sys
 import webbrowser
 from bisect import bisect_left, bisect_right
@@ -19,9 +20,10 @@ from time import monotonic
 from typing import Literal
 from urllib.parse import urlsplit
 
+import aiohttp
 from aiohttp import web
 from platformdirs import user_data_path
-from pydantic import Field, ValidationError
+from pydantic import ConfigDict, Field, ValidationError
 
 from echoscope.application.administration import (
     RSS_TYPES,
@@ -30,11 +32,14 @@ from echoscope.application.administration import (
     Administration,
     SourceForm,
 )
-from echoscope.application.config import StrictModel
+from echoscope.application.config import Credential, StrictModel
 from echoscope.application.conversations import Conversations
+from echoscope.application.credentials import CredentialVault
 from echoscope.application.discovery import BRAVE_KEY, TopicDiscovery, public_result_url
 from echoscope.application.ports import AuthRequired, ConnectorError, StorageUnavailable
-from echoscope.connectors.youtube_comments import VIDEO_ID
+from echoscope.application.secrets import account_secrets, secrets_for_request
+from echoscope.connectors.youtube import youtube_headers
+from echoscope.connectors.youtube_comments import VIDEO_ID, video_titles
 from echoscope.domain.models import (
     HistoryQuery,
     Kind,
@@ -46,7 +51,9 @@ from echoscope.domain.models import (
 )
 from echoscope.domain.rules import evaluate
 from echoscope.domain.tone import message_tone
+from echoscope.storage.sqlite import alert_key
 
+from .accounts import COOKIE, Accounts, set_password
 from .report import report_pdf
 
 PANELS = {
@@ -63,6 +70,7 @@ ASSETS = {
     "/app.css": ("app.css", "text/css"),
     "/app.js": ("app.js", "text/javascript"),
     "/ciberdefensa.png": ("ciberdefensa.png", "image/png"),
+    "/login.js": ("login.js", "text/javascript"),
 }
 WORDS = re.compile(r"\S+")
 
@@ -108,12 +116,35 @@ class ReportInput(StrictModel):
     end: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
+class LoginInput(StrictModel):
+    model_config = ConfigDict(str_strip_whitespace=False)
+    username: str = Field(min_length=1, max_length=40)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class NewCredential(StrictModel):
+    provider: str = Field(max_length=30)
+    name: str = Field(min_length=1, max_length=80)
+    value: str = Field(min_length=1, max_length=4096)
+
+
+class ReviewInput(StrictModel):
+    state: Literal["open", "verified", "threat", "dismissed"]
+    keys: list[str] = Field(min_length=1, max_length=500)
+
+
 class Workspace:
-    def __init__(self, path, practice, auto_start):
+    def __init__(self, path, practice, auto_start, *, username=None, cipher=None):
         self.service = Administration(path, practice)
+        self.username = username
+        self.secrets = {} if username else None
+        self.vault = CredentialVault(self.service.store, cipher)
+        self.credential_guard = asyncio.Lock()
         self.discovery = TopicDiscovery(self.service)
         self.conversations = Conversations()
         self.recent_discoveries = {}
+        self.video_titles = {}
+        self.video_guard = asyncio.Lock()
         self.report_guard = asyncio.Lock()
         self.practice = practice
         self.auto_start = auto_start
@@ -123,17 +154,30 @@ class Workspace:
         self.last_seen = monotonic()
         self.config = None
 
-    async def lifecycle(self, _app):
-        self.config = await self.service.open()
+    async def open(self):
+        scope = account_secrets.set(self.secrets)
         try:
-            if self.auto_start:
-                await self.service.set_running(True)
+            self.config = await self.service.open()
+            try:
+                await self.vault.load()
+                if self.auto_start:
+                    await self.service.set_running(True)
+            except BaseException:
+                await self.service.close()
+                raise
+        finally:
+            account_secrets.reset(scope)
+
+    async def lifecycle(self, _app):
+        await self.open()
+        try:
             yield
         finally:
             await self.service.close()
 
 
 KEY = web.AppKey("workspace", Workspace)
+ACCOUNTS = web.AppKey("accounts", Accounts)
 
 
 def error(message, status):
@@ -142,22 +186,37 @@ def error(message, status):
 
 @web.middleware
 async def boundary(request, handler):
-    state = request.app[KEY]
-    if not state.authority or request.host != state.authority:
+    accounts = request.app.get(ACCOUNTS)
+    state = request.app.get(KEY)
+    origin = accounts.origin if accounts else f"http://{state.authority}"
+    if request.host != urlsplit(origin).netloc or (accounts and not request.secure):
         return error("Dirección local no válida.", 421)
     if request.headers.get("Sec-Fetch-Site") == "cross-site":
         return error("Solicitud de otro sitio rechazada.", 403)
-    if request.method != "GET" and request.method != "HEAD":
-        origin = request.headers.get("Origin")
+    if accounts:
+        username = accounts.username(request.cookies.get(COOKIE))
+        if request.path.startswith("/api/") and request.path != "/api/login":
+            if not username:
+                return error("Iniciá sesión para continuar.", 401)
+            try:
+                state = await accounts.workspace(username)
+            except (ValueError, StorageUnavailable) as exc:
+                return error(str(exc), 503)
+        request["username"] = username
+    if request.method not in {"GET", "HEAD"}:
         token = request.headers.get("X-EchoScope-Token", "")
-        if (
-            origin != f"http://{state.authority}"
-            or not token.isascii()
-            or not hmac.compare_digest(token, state.token)
+        is_login = bool(accounts and request.path == "/api/login")
+        if request.headers.get("Origin") != origin or (
+            not is_login
+            and (
+                state is None or not token.isascii() or not hmac.compare_digest(token, state.token)
+            )
         ):
             return error("La sesión cambió. Actualizá la página.", 403)
         if request.content_type != "application/json":
             return error("Formato de solicitud no válido.", 415)
+    request["workspace"] = state
+    scope = account_secrets.set(state.secrets if state else None)
     try:
         response = await handler(request)
     except AuthRequired:
@@ -170,7 +229,9 @@ async def boundary(request, handler):
         response = error("Revisá los campos del formulario.", 400)
     except ValueError as exc:
         response = error(str(exc), 400)
-    if response.status < 400 and request.path.startswith("/api/"):
+    finally:
+        account_secrets.reset(scope)
+    if state and response.status < 400 and request.path.startswith("/api/"):
         state.last_seen = monotonic()
     response.headers.update(
         {
@@ -309,6 +370,8 @@ def result_data(result, sources, *, report=False):
         "captured": message.captured_at.isoformat(),
         "url": safe_url(message.url or ""),
         "resource_url": resource_link(message),
+        "resource_id": message.resource_id if message.origin.startswith("youtube:") else None,
+        "resource_title": message.resource_title,
         "provider": "YouTube" if message.origin.startswith("youtube:") else None,
         "tone": message_tone(message.text),
         **(
@@ -391,12 +454,14 @@ def config_data(config):
 
 
 async def bootstrap(request):
-    state = request.app[KEY]
+    state = request["workspace"]
     return web.json_response(
         {
             **config_data(state.config),
             "token": state.token,
             "practice": state.practice,
+            "username": state.username,
+            "credentials": state.vault.public(),
             "theme": await state.service.store.desktop_setting("theme") or "dark",
             "version": version("echoscope-radar"),
         }
@@ -404,7 +469,7 @@ async def bootstrap(request):
 
 
 async def board(request):
-    state = request.app[KEY]
+    state = request["workspace"]
     service = state.service
     views = list(dict.fromkeys(request.query.get("panels", "news,youtube,live").split(",")))
     if views == [""]:
@@ -417,6 +482,16 @@ async def board(request):
     if mode not in {"all", "confirmed", "review"} or alerts_mode not in {"confirmed", "review"}:
         raise ValueError("Filtro desconocido.")
     limit = min(max(int(request.query.get("limit", 45)), 10), 200)
+    review = request.query.get("review", "all")
+    tone = request.query.get("tone", "all")
+    if review not in {"all", "open", "verified", "threat", "dismissed"} or tone not in {
+        "all",
+        "positive",
+        "negative",
+        "mixed",
+        "neutral",
+    }:
+        raise ValueError("Filtro de alertas desconocido.")
     snapshots = dict(service.radar.jobs) if service.radar else await service.store.snapshots()
     sources = {source.id: source.label or source.id for source in state.config.sources}
     panels = [
@@ -433,21 +508,27 @@ async def board(request):
     ]
     alert_query = HistoryQuery(
         text=text,
-        limit=20,
+        limit=min(max(int(request.query.get("alert_limit", 20)), 1), 500),
         matches_only=alerts_mode == "confirmed",
         review_only=alerts_mode == "review",
     )
-    *pages, alerts = await asyncio.gather(*panels, service.messages(alert_query))
+    *pages, alerts = await asyncio.gather(
+        *panels, filtered_alerts(service, alert_query, review, tone)
+    )
+    rendered = {
+        view: [result_data(item, sources) for item in rows] for view, rows in zip(views, pages)
+    }
+    await group_video_titles(state, rendered.get("youtube", []))
     return web.json_response(
         {
             "running": bool(service.radar),
-            "key_loaded": bool(os.environ.get(YOUTUBE_KEY)),
-            "web_key_loaded": bool(os.environ.get(BRAVE_KEY)),
-            "panels": {
-                view: [result_data(item, sources) for item in rows]
-                for view, rows in zip(views, pages)
-            },
-            "alerts": [result_data(item, sources) for item in alerts],
+            "key_loaded": bool(secrets_for_request().get(YOUTUBE_KEY)),
+            "web_key_loaded": bool(secrets_for_request().get(BRAVE_KEY)),
+            "panels": rendered,
+            "alerts": [
+                {**result_data(item, sources), "review_key": key, "review_state": state}
+                for item, key, state in alerts
+            ],
             "statuses": [
                 {
                     "id": key,
@@ -468,8 +549,82 @@ async def board(request):
     )
 
 
+async def group_video_titles(state, rows):
+    titles = {
+        item["resource_id"]: item["resource_title"] or item["title"]
+        for item in rows
+        if item["resource_id"] and (item["resource_title"] or item["title"])
+    }
+    if not state.practice and secrets_for_request().get(YOUTUBE_KEY):
+        async with state.video_guard:
+            now = monotonic()
+            state.video_titles = {
+                identifier: value
+                for identifier, value in state.video_titles.items()
+                if value[0] > now
+            }
+            missing = list(
+                dict.fromkeys(
+                    item["resource_id"]
+                    for item in rows
+                    if item["resource_id"]
+                    and VIDEO_ID.fullmatch(item["resource_id"])
+                    and item["resource_id"] not in titles
+                    and item["resource_id"] not in state.video_titles
+                )
+            )[:50]
+            if missing:
+                try:
+                    async with aiohttp.ClientSession(
+                        trust_env=False, timeout=aiohttp.ClientTimeout(total=4)
+                    ) as session:
+                        headers = youtube_headers(Credential(kind="api_key", env=YOUTUBE_KEY))
+                        found = await video_titles(session, missing, headers)
+                except (ConnectorError, TimeoutError):
+                    found = {}
+                state.video_titles.update(
+                    {
+                        identifier: (
+                            now + (900 if identifier in found else 120),
+                            found.get(identifier),
+                        )
+                        for identifier in missing
+                    }
+                )
+                while len(state.video_titles) > 1000:
+                    del state.video_titles[next(iter(state.video_titles))]
+    for item in rows:
+        identifier = item["resource_id"]
+        item["resource_title"] = (
+            item["resource_title"]
+            or titles.get(identifier)
+            or state.video_titles.get(identifier, (0, None))[1]
+        )
+
+
+async def filtered_alerts(service, query, review, tone):
+    rows = await service.store.messages(
+        query,
+        review_state=None if review == "all" else review,
+        tone=None if tone == "all" else tone,
+    )
+    if radar := service.radar:
+        for identifier in tuple(radar.session):
+            rows.extend(await radar.messages(replace(query, job_id=identifier, limit=500)))
+    keyed = [(item, alert_key(item)) for item in rows]
+    states = await service.store.alert_reviews(key for _, key in keyed)
+    result = [
+        (item, key, states.get(key, "open"))
+        for item, key in keyed
+        if (review == "all" or states.get(key, "open") == review)
+        and (tone == "all" or message_tone(item.observation.message.text) == tone)
+    ]
+    result.sort(key=lambda entry: entry[0].observation.message.captured_at, reverse=True)
+    return result[: query.limit]
+
+
 async def action(request):
-    state = request.app[KEY]
+    state = request["workspace"]
     service = state.service
     name = request.match_info["name"]
     data = await request.json()
@@ -479,6 +634,12 @@ async def action(request):
         await service.set_theme(ThemeInput.model_validate(data).value)
     elif name == "topic":
         state.config = await service.save_topic(TopicInput.model_validate(data).lines)
+    elif name == "alert-review":
+        fields = ReviewInput.model_validate(data)
+        if any(not re.fullmatch(r"[a-f0-9]{64}", key) for key in fields.keys):
+            raise ValueError("Revisá las alertas seleccionadas.")
+        await service.store.set_alert_reviews(fields.keys, fields.state)
+        return web.json_response({"detail": "Estado de alertas actualizado."})
     elif name == "source":
         fields = SourceInput.model_validate(data)
         if fields.type_label not in SOURCE_TYPES:
@@ -524,12 +685,30 @@ async def action(request):
         await service.check_youtube()
         return web.json_response({"detail": "YouTube aceptó la clave de esta sesión."})
     elif name == "key":
+        if state.username:
+            raise ValueError("Guardá la clave en Claves API.")
         await service.credentials(TextInput.model_validate(data).value)
     elif name == "web-key":
+        if state.username:
+            raise ValueError("Guardá la clave en Claves API.")
         key = TextInput.model_validate(data).value
         if not key.isascii() or not key.isprintable() or any(char.isspace() for char in key):
             raise ValueError("Ingresá una clave de API sin espacios.")
-        os.environ[BRAVE_KEY] = key
+        secrets_for_request()[BRAVE_KEY] = key
+    elif name in {"credential-add", "credential-use", "credential-remove"}:
+        async with state.credential_guard:
+            previous = secrets_for_request().get(YOUTUBE_KEY)
+            if name == "credential-add":
+                fields = NewCredential.model_validate(data)
+                await state.vault.add(fields.provider, fields.name, fields.value)
+            else:
+                await state.vault.change(
+                    TextInput.model_validate(data).value, remove=name == "credential-remove"
+                )
+            if previous != secrets_for_request().get(YOUTUBE_KEY) and service.radar:
+                await service.set_running(False)
+                await service.set_running(True)
+            return web.json_response(state.vault.public())
     elif name == "topic-search":
         terms = DiscoveryInput.model_validate(data).value.strip()
         candidates, notes = await state.discovery.search(terms, state.config)
@@ -590,6 +769,8 @@ async def action(request):
             }
         )
     elif name == "shutdown":
+        if state.username:
+            raise web.HTTPForbidden()
         asyncio.get_running_loop().call_later(0.2, state.closed.set)
     else:
         raise web.HTTPNotFound()
@@ -698,21 +879,59 @@ async def export_report(state, fields):
 
 async def asset(request):
     name, mime = ASSETS[request.path]
+    if request.path == "/" and request.app.get(ACCOUNTS) and not request["username"]:
+        name = "login.html"
     body = files("echoscope").joinpath("web_assets", name).read_bytes()
     return web.Response(
         body=body, content_type=mime, charset=None if mime == "image/png" else "utf-8"
     )
 
 
-def create_app(path, *, practice=False, auto_start=True):
-    state = Workspace(path, practice, auto_start)
+async def login(request):
+    accounts = request.app.get(ACCOUNTS)
+    if not accounts:
+        return error("El inicio de sesión requiere el modo servidor.", 404)
+    data = LoginInput.model_validate(await request.json())
+    token = await accounts.authenticate(data.username, data.password, request.remote or "")
+    if not token:
+        return error(
+            "Acceso rechazado. Revisá los datos o esperá un minuto para volver a intentar.", 401
+        )
+    accounts.sessions.pop(request.cookies.get(COOKIE), None)
+    response = web.json_response({"detail": "Sesión iniciada."})
+    response.set_cookie(
+        COOKIE, token, path="/", secure=True, httponly=True, samesite="Strict", max_age=28800
+    )
+    return response
+
+
+async def logout(request):
+    accounts = request.app.get(ACCOUNTS)
+    if not accounts:
+        return error("El cierre de sesión requiere el modo servidor.", 404)
+    accounts.sessions.pop(request.cookies.get(COOKIE), None)
+    response = web.json_response({"detail": "Sesión cerrada."})
+    response.set_cookie(
+        COOKIE, "", path="/", secure=True, httponly=True, samesite="Strict", max_age=0
+    )
+    return response
+
+
+def create_app(path, *, practice=False, auto_start=True, accounts=None):
     app = web.Application(middlewares=[boundary], client_max_size=64 * 1024)
-    app[KEY] = state
-    app.cleanup_ctx.append(state.lifecycle)
+    if accounts:
+        app[ACCOUNTS] = accounts
+        app.cleanup_ctx.append(accounts.lifecycle)
+    else:
+        state = Workspace(path, practice, auto_start)
+        app[KEY] = state
+        app.cleanup_ctx.append(state.lifecycle)
     for route in ASSETS:
         app.router.add_get(route, asset)
     app.router.add_get("/api/bootstrap", bootstrap)
     app.router.add_get("/api/board", board)
+    app.router.add_post("/api/login", login)
+    app.router.add_post("/api/logout", logout)
     app.router.add_post("/api/{name}", action)
     return app
 
@@ -747,12 +966,67 @@ def main():
     parser.add_argument("--db", type=Path)
     parser.add_argument("--port", type=int)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--server-dir", type=Path, help="Carpeta privada del servidor multiusuario")
+    parser.add_argument(
+        "--set-password", metavar="USUARIO", help="Crea o actualiza una cuenta del servidor"
+    )
+    parser.add_argument("--origin", help="Dirección HTTPS exacta del servidor")
+    parser.add_argument("--bind", default="127.0.0.1")
+    parser.add_argument("--tls-cert", type=Path)
+    parser.add_argument("--tls-key", type=Path)
     args = parser.parse_args()
     port = args.port if args.port is not None else (8766 if args.demo else 8765)
     path = args.db or user_data_path("EchoScopeRadar", appauthor=False) / (
         "practica.sqlite" if args.demo else "administracion.sqlite"
     )
     try:
+        if args.set_password:
+            from getpass import getpass
+
+            if not args.server_dir or not sys.stdin or not sys.stdin.isatty():
+                raise ValueError(
+                    "Usá --server-dir y una terminal interactiva para administrar usuarios."
+                )
+            password = getpass("Nueva contraseña: ")
+            if password != getpass("Repetí la contraseña: "):
+                raise ValueError("Las contraseñas no coinciden.")
+            set_password(args.server_dir, args.set_password, password)
+            print("Cuenta guardada. Reiniciá el servidor para aplicar el cambio.")
+            return
+        if args.server_dir:
+            url = urlsplit(args.origin or "")
+            if (
+                args.demo
+                or args.db
+                or url.scheme != "https"
+                or not url.hostname
+                or url.username
+                or url.path
+                or url.query
+                or url.fragment
+                or not args.tls_cert
+                or not args.tls_key
+            ):
+                raise ValueError(
+                    "El modo servidor requiere --origin HTTPS sin barra final, --tls-cert y --tls-key."
+                )
+            key = os.environ.get("ECHOSCOPE_MASTER_KEY")
+            if not key:
+                raise ValueError(
+                    "Configurá ECHOSCOPE_MASTER_KEY para cifrar las claves API del servidor."
+                )
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
+            context.load_cert_chain(args.tls_cert, args.tls_key)
+            accounts = Accounts(args.server_dir.resolve(), args.origin, key, Workspace)
+            web.run_app(
+                create_app(None, accounts=accounts),
+                host=args.bind,
+                port=port,
+                ssl_context=context,
+                access_log=None,
+            )
+            return
         asyncio.run(serve(path, practice=args.demo, port=port, browser=not args.no_browser))
     except KeyboardInterrupt:
         pass

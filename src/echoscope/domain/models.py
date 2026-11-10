@@ -57,6 +57,7 @@ class Message:
     published_at: datetime | None = None
     captured_at: datetime = field(default_factory=utcnow)
     title: str | None = None
+    resource_title: str | None = None
 
 
 def publication_title(message: Message) -> str:

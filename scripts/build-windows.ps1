@@ -19,3 +19,4 @@ uv run --no-sync pyinstaller --noconfirm --windowed --name EchoScopeRadar `
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Copy-Item -LiteralPath 'Probar EchoScope Radar.cmd', 'Abrir EchoScope Radar.cmd' -Destination $package
 Copy-Item -LiteralPath 'docs/uso-administrativo.md', 'docs/fuentes-uruguay.md', 'CHANGELOG.md' -Destination $package
+Copy-Item -LiteralPath 'docs/servidor.md' -Destination $package

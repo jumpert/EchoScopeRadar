@@ -10,14 +10,14 @@ const helpText = {
   board: ["Cómo usar la mesa", "Elegí qué pestañas ver y buscá dentro de lo ya recibido. «Alertas» muestra las coincidencias confirmadas. Congelar vista mantiene lo que ves mientras la captura sigue. Para buscar publicaciones nuevas, elegí Buscar por tema."],
   news: ["Noticias", "Titulares y extractos de los medios que seguís. Abrí el enlace de origen para leer la nota completa."],
   press: ["Comentarios de prensa", "Aquí aparecen los comentarios de notas que ofrecen un feed accesible. También podés agregar un feed de comentarios desde Fuentes."],
-  youtube: ["Videos de YouTube", "Cargá y verificá tu clave en Tema y acceso. Los canales automáticos consultan videos recientes relacionados con tus términos. Para leer un video concreto, agregá su enlace en Fuentes."],
+  youtube: ["Videos de YouTube", "Agregá tu clave en Claves API y verificá el acceso en Tema y acceso. Los canales automáticos consultan videos recientes relacionados con tus términos. Para leer un video concreto, agregá su enlace en Fuentes."],
   live: ["Chat en vivo", "Los canales automáticos esperan un directo relacionado con tus términos. Para probar uno que está al aire, agregá el enlace del directo en Fuentes. YouTube debe tener el chat habilitado y accesible."],
   reviews: ["Reseñas", "Agregá un RSS/Atom de reseñas desde Fuentes. Si tenés el enlace de la página, usá Detectar feed. Una nota sin un feed de reseñas no aparecerá en esta pestaña."],
   forum: ["Foros", "Agregá el RSS o Atom público del foro para recibir sus publicaciones. Abrí el enlace de origen para ver la conversación completa."],
   social: ["Redes sociales", "Podés seguir respuestas de un hilo público de Bluesky. Las publicaciones de otras redes encontradas por búsqueda abren en su sitio de origen."],
   alerts: ["Cómo leer las alertas", "Una alerta confirma que apareció un término de tu lista. «Para revisar» reúne aproximaciones. Abrí un resultado para ver el contexto o descargá un PDF por fechas."],
   sources: ["Configurar fuentes", "Agregá un enlace, elegí qué querés leer y guardá la fuente. Con el seguimiento activo, «Consultar ahora» solicita un nuevo ciclo respetando el intervalo mínimo. El estado indica qué ocurrió."],
-  access: ["Configurar tema y acceso", "Escribí un término o frase por línea. Para consultar YouTube, cargá tu clave de YouTube Data API y usá Verificar acceso. La clave se carga para esta sesión."],
+  access: ["Configurar tema y acceso", "Escribí un término o frase por línea. En Claves API agregá tu clave de YouTube Data API y elegí cuál usar. Volvé aquí para verificar el acceso."],
 };
 const names = {
   COMMENT: "Comentario", REVIEW: "Reseña", LIVE_CHAT: "Chat en vivo", FEED_ENTRY: "Publicación",
@@ -25,6 +25,7 @@ const names = {
   SOCIAL_COMMENT: "Respuesta en red social",
 };
 const severity = { info: "Info", important: "Importante", critical: "Crítica", review: "Para revisar" };
+const reviewLabels = { open: "Sin verificar", verified: "Verificada", threat: "Amenaza", dismissed: "Descartada" };
 const tones = {
   positive: ["＋", "Positivo"], negative: ["−", "Negativo"], mixed: ["±", "Mixto"], neutral: ["·", "Neutro"],
 };
@@ -47,6 +48,7 @@ const ui = {
   alertsVisible: true, alertMode: "confirmed", frozen: false, running: false, statuses: [],
   limit: 45, page: "board", sequence: 0, noticeUntil: 0, timer: null, closed: false,
   columns: 3, widths: {}, order: [], defaults: [], projection: false, youtubeKeyLoaded: false,
+  alertLimit: 20, alertRows: [], selectedAlerts: new Set(), username: null,
 };
 const streams = new Map();
 const time = new Intl.DateTimeFormat("es-UY", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -87,12 +89,12 @@ function originLink(url, label = null, className = "origin-link") {
 }
 
 function preference(key, fallback) {
-  try { return JSON.parse(localStorage.getItem(`radar.${key}`)) ?? fallback; }
+  try { return JSON.parse(localStorage.getItem(`radar.${ui.username ? `${ui.username}.` : ""}${key}`)) ?? fallback; }
   catch { return fallback; }
 }
 
 function remember(key, value) {
-  try { localStorage.setItem(`radar.${key}`, JSON.stringify(value)); } catch { /* Session layout still works. */ }
+  try { localStorage.setItem(`radar.${ui.username ? `${ui.username}.` : ""}${key}`, JSON.stringify(value)); } catch { /* Session layout still works. */ }
 }
 
 async function api(path, payload, signal) {
@@ -103,6 +105,7 @@ async function api(path, payload, signal) {
     options.body = JSON.stringify(payload);
   }
   const response = await fetch(`/api/${path}`, options);
+  if (response.status === 401 && ui.username) window.location.reload();
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || "No se pudo completar la operación.");
   return result;
@@ -334,7 +337,7 @@ function toneBadge(tone, full = false) {
 function showDetails(item) {
   $("details-type").textContent = names[item.kind] ?? "Resultado";
   $("details-title").replaceChildren();
-  appendTitle($("details-title"), item, "span", item.source);
+  appendTitle($("details-title"), item, "span", item.resource_title || item.source);
   $("details-meta").textContent = [item.title ? item.source : null, detailTime.format(new Date(item.date)), item.author].filter(Boolean).join(" · ");
   $("details-tone").replaceChildren(node("span", "", "Tono estimado "), toneBadge(item.tone, true));
   $("details-text").replaceChildren();
@@ -385,6 +388,40 @@ function withOrigin(control, item) {
   return row;
 }
 
+function messageRow(item, grouped = false) {
+  const control = button("", "record", () => showDetails(item));
+  control.append(node("span", "record-time", time.format(new Date(item.date))), toneBadge(item.tone));
+  const text = node("span", "record-body");
+  if (!grouped || item.kind !== "YOUTUBE_VIDEO") appendTitle(text, item);
+  text.append(node("span", "author", item.author || item.source));
+  appendContext(text, item, "span", true);
+  control.append(text);
+  return withOrigin(control, item);
+}
+
+function renderVideoGroups(container, rows, empty) {
+  const groups = new Map();
+  for (const item of rows) {
+    const id = item.resource_id || String(item.id);
+    if (!groups.has(id)) groups.set(id, { id, title: item.resource_title || item.title, url: item.resource_url, rows: [], seen: new Set() });
+    const group = groups.get(id);
+    if (item.resource_title || item.title) group.title = item.resource_title || item.title;
+    const identity = item.url ? `${item.kind}:${item.url}` : String(item.id);
+    if (!group.seen.has(identity)) {
+      group.seen.add(identity);
+      group.rows.push(item);
+    }
+  }
+  replaceRecords(container, [...groups.values()], (group) => {
+    const section = node("section", "video-group");
+    const title = group.title || `Video de YouTube · ${group.id}`;
+    const heading = node("h3", "publication-title");
+    heading.append(group.url ? originLink(group.url, title, "video-title-link") : document.createTextNode(title));
+    section.append(heading, ...group.rows.map((item) => messageRow(item, true)));
+    return section;
+  }, empty);
+}
+
 function renderPanel(key, rows, statuses) {
   const stream = streams.get(key);
   const applicable = statuses.filter((item) => item.categories.includes(key));
@@ -401,34 +438,42 @@ function renderPanel(key, rows, statuses) {
   stream.load.hidden = rows.length < ui.limit || ui.limit >= 200;
   let empty = applicable.length ? "Todavía no hay resultados para este filtro." : "Agregá una fuente para empezar a seguir este flujo.";
   const needsKey = !ui.practice && ["live", "youtube"].includes(key) && !ui.youtubeKeyLoaded && applicable.length && applicable.every((item) => item.uses_session_key);
-  if (needsKey) empty = "Para las fuentes configuradas por defecto, cargá la clave en Tema y acceso y elegí Verificar acceso.";
+  if (needsKey) empty = "Agregá una clave en Claves API y verificá el acceso a YouTube desde Tema y acceso.";
   else if (key === "live" && waiting) empty = "Podés esperar al siguiente ciclo o agregar el enlace de un directo que esté al aire y tenga chat habilitado.";
   else if (key === "youtube" && applicable.some((item) => item.detail === "SIN RESULTADOS")) empty = "La última consulta no devolvió resultados para alguna fuente. Revisá los términos del canal o agregá un video por su enlace.";
   else if (key === "reviews" && !ui.practice) empty = "Todavía no se recibieron reseñas. Agregá un RSS/Atom de reseñas desde Fuentes o usá Detectar feed en una página.";
   const signature = JSON.stringify([empty, rows]);
   if (signature === stream.signature) return;
   stream.signature = signature;
-  replaceRecords(stream.list, rows, (item) => {
-    const control = button("", "record", () => showDetails(item));
-    control.append(node("span", "record-time", time.format(new Date(item.date))), toneBadge(item.tone));
-    const text = node("span", "record-body");
-    appendTitle(text, item);
-    text.append(node("span", "author", item.author || item.source));
-    appendContext(text, item, "span", true);
-    control.append(text);
-    return withOrigin(control, item);
-  }, empty);
+  if (key === "youtube") renderVideoGroups(stream.list, rows, empty);
+  else replaceRecords(stream.list, rows, messageRow, empty);
   if (!rows.length && (needsKey || (key === "reviews" && !ui.practice))) {
-    const action = needsKey ? button("Ir a Tema y acceso", "button subtle", () => {
-      choosePage("settings");
-      $("youtube-key").focus();
+    const action = needsKey ? button("Ir a Claves API", "button subtle", () => {
+      choosePage("credentials");
+      $("credential-provider").value = "youtube";
+      $("credential-name").focus();
     }) : button("Agregar fuente de reseñas", "button subtle", () => showSource({ type_label: "Reseñas de un sitio (RSS/Atom)" }));
     stream.list.firstElementChild.append(node("br", ""), action);
   }
 }
 
 let alertSignature;
+function updateAlertSelection() {
+  const count = ui.selectedAlerts.size;
+  const all = $("alert-select-all");
+  all.checked = !!ui.alertRows.length && count === ui.alertRows.length;
+  all.indeterminate = count > 0 && !all.checked;
+  all.disabled = !ui.alertRows.length;
+  $("alert-apply").disabled = !count;
+  $("alert-selected").textContent = count ? `${count} seleccionada${count === 1 ? "" : "s"}` : "";
+  for (const input of $("alert-rows").querySelectorAll("input[data-review-key]")) input.checked = ui.selectedAlerts.has(input.dataset.reviewKey);
+}
+
 function renderAlerts(rows) {
+  ui.alertRows = rows;
+  const visible = new Set(rows.map((item) => item.review_key));
+  for (const key of ui.selectedAlerts) if (!visible.has(key)) ui.selectedAlerts.delete(key);
+  $("alert-more").hidden = rows.length < ui.alertLimit || ui.alertLimit >= 500;
   $("alert-count").textContent = rows.length;
   const signature = JSON.stringify([ui.alertMode, rows]);
   if (signature === alertSignature) return;
@@ -442,14 +487,29 @@ function renderAlerts(rows) {
     const summary = node("span", "alert-summary");
     appendTitle(summary, item);
     summary.append(node("span", "alert-source", item.source));
+    const review = node("span", "review-state", reviewLabels[item.review_state]);
+    review.dataset.state = item.review_state;
+    summary.append(review);
     for (const term of terms) {
       const mark = node("mark", "alert-term", term);
       mark.dataset.match = level;
       summary.append(mark);
     }
     control.append(label, node("span", "record-time", time.format(new Date(item.captured))), toneBadge(item.tone), summary);
-    return withOrigin(control, item);
+    const row = node("div", "selectable-alert");
+    const select = node("input", "alert-check");
+    select.type = "checkbox";
+    select.dataset.reviewKey = item.review_key;
+    select.setAttribute("aria-label", `Seleccionar alerta de ${item.source} a las ${time.format(new Date(item.captured))}`);
+    select.addEventListener("change", () => {
+      if (select.checked) ui.selectedAlerts.add(item.review_key);
+      else ui.selectedAlerts.delete(item.review_key);
+      updateAlertSelection();
+    });
+    row.append(select, withOrigin(control, item));
+    return row;
   }, ui.alertMode === "review" ? "Sin coincidencias aproximadas." : "Sin alertas confirmadas para este filtro.");
+  updateAlertSelection();
 }
 
 let sourcesSignature;
@@ -487,7 +547,8 @@ async function refresh(force = false) {
   if (!ui.token || ui.closed) return;
   const number = ++ui.sequence;
   const params = new URLSearchParams({ panels: activePanels().join(","), q: $("filter").value,
-    mode: $("match-mode").value, alerts: ui.alertMode, limit: ui.limit });
+    mode: $("match-mode").value, alerts: ui.alertMode, limit: ui.limit, alert_limit: ui.alertLimit,
+    review: $("alert-state-filter").value, tone: $("alert-tone-filter").value });
   try {
     const data = await api(`board?${params}`);
     if (number !== ui.sequence || ui.closed) return;
@@ -499,7 +560,6 @@ async function refresh(force = false) {
     $("run-status").classList.toggle("is-live", data.running);
     $("run-status").lastElementChild.textContent = data.running ? "EN CURSO" : "EN PAUSA";
     $("key-status").textContent = data.key_loaded ? "Clave cargada para esta sesión." : "Clave pendiente para consultar YouTube.";
-    $("web-key-status").textContent = data.web_key_loaded ? "Clave cargada para esta sesión." : "Búsqueda web abierta sin habilitar.";
     if (!ui.frozen || force) {
       for (const [key, rows] of Object.entries(data.panels)) renderPanel(key, rows, data.statuses);
       renderAlerts(data.alerts);
@@ -663,7 +723,33 @@ $("filter").addEventListener("input", () => {
   searchTimer = setTimeout(() => refresh(true), 230);
 });
 $("match-mode").addEventListener("change", () => refresh(true));
+for (const id of ["alert-state-filter", "alert-tone-filter"]) $(id).addEventListener("change", () => {
+  ui.selectedAlerts.clear();
+  ui.alertLimit = 20;
+  refresh(true);
+});
+$("alert-select-all").addEventListener("change", (event) => {
+  ui.selectedAlerts = new Set(event.target.checked ? ui.alertRows.map((item) => item.review_key) : []);
+  updateAlertSelection();
+});
+$("alert-more").addEventListener("click", () => {
+  ui.alertLimit = Math.min(500, ui.alertLimit + 50);
+  refresh(true);
+});
+$("alert-apply").addEventListener("click", async () => {
+  const keys = [...ui.selectedAlerts];
+  if (!keys.length) return;
+  $("alert-apply").disabled = true;
+  try {
+    const result = await api("alert-review", { keys, state: $("alert-state-action").value });
+    ui.selectedAlerts.clear();
+    notice(result.detail);
+    await refresh(true);
+  } catch (error) { notice(error.message, true); }
+  finally { updateAlertSelection(); }
+});
 $("alert-review").addEventListener("click", () => {
+  ui.selectedAlerts.clear();
   ui.alertMode = ui.alertMode === "review" ? "confirmed" : "review";
   $("alert-review").setAttribute("aria-pressed", String(ui.alertMode === "review"));
   $("alerts-title").textContent = ui.alertMode === "review" ? "Para revisar" : "Alertas";
@@ -671,7 +757,7 @@ $("alert-review").addEventListener("click", () => {
   refresh(true);
 });
 function toggleAlerts() {
-  $("alert-rows").hidden = !ui.alertsVisible;
+  $("alert-content").hidden = !ui.alertsVisible;
   $("hide-alerts").textContent = ui.alertsVisible ? "Ocultar" : "Mostrar";
   $("hide-alerts").setAttribute("aria-expanded", String(ui.alertsVisible));
 }
@@ -715,12 +801,6 @@ $("topic-form").addEventListener("submit", (event) => {
   event.preventDefault();
   runAction("topic", { lines: $("topic").value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) }, "Lista blanca actualizada.");
 });
-$("key-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const value = $("youtube-key").value;
-  $("youtube-key").value = "";
-  await runAction("key", { value }, "Clave cargada para esta sesión.");
-});
 const youtubeCheckStatus = node("p", "feedback");
 youtubeCheckStatus.setAttribute("role", "status");
 const youtubeCheck = button("Verificar acceso", "button subtle", async () => {
@@ -732,12 +812,53 @@ const youtubeCheck = button("Verificar acceso", "button subtle", async () => {
   } catch (error) { youtubeCheckStatus.textContent = error.message; }
   finally { youtubeCheck.disabled = false; }
 });
-$("key-form").append(youtubeCheck, youtubeCheckStatus);
-$("web-key-form").addEventListener("submit", async (event) => {
+$("youtube-access").append(button("Administrar claves", "button subtle", () => choosePage("credentials")), youtubeCheck, youtubeCheckStatus);
+
+function renderVault(data) {
+  const select = $("credential-provider");
+  const previous = select.value;
+  select.replaceChildren(...data.providers.map(({ id, label }) => {
+    const option = node("option", "", label);
+    option.value = id;
+    return option;
+  }));
+  if (previous) select.value = previous;
+  $("vault-status").textContent = data.persistent ? "Las claves se guardan cifradas en tu cuenta." : "En modo local las claves agregadas se usan durante esta sesión.";
+  const providers = new Map(data.providers.map((item) => [item.id, item.label]));
+  const available = data.providers.filter((item) => item.available).map((item) => item.label);
+  if (data.searx_available) available.push("SearXNG");
+  $("credential-providers").textContent = `Proveedores con acceso: ${available.join(", ") || "ninguno"}.`;
+  const entries = data.entries.map((entry) => {
+    const row = node("div", "credential-entry");
+    row.append(node("strong", "", entry.name), node("p", "metadata", `${providers.get(entry.provider)} · ${entry.active ? "En uso" : "Disponible"}`));
+    if (!entry.active) row.append(button("Usar", "button subtle", () => changeCredential("credential-use", { value: entry.id })));
+    row.append(button("Quitar", "button subtle", () => {
+      if (window.confirm(`¿Quitar la clave «${entry.name}»?`)) changeCredential("credential-remove", { value: entry.id });
+    }));
+    return row;
+  });
+  $("credential-list").replaceChildren(...(entries.length ? entries : [node("p", "", "Todavía no agregaste claves.")]));
+}
+
+async function changeCredential(action, payload) {
+  try {
+    renderVault(await api(action, payload));
+    $("credential-feedback").textContent = "Claves actualizadas.";
+    await refresh(true);
+    return true;
+  } catch (error) {
+    $("credential-feedback").textContent = error.message;
+    return false;
+  }
+}
+
+$("credential-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const value = $("web-key").value;
-  $("web-key").value = "";
-  await runAction("web-key", { value }, "Búsqueda web habilitada para esta sesión.");
+  event.submitter.disabled = true;
+  const value = $("credential-value").value;
+  $("credential-value").value = "";
+  if (await changeCredential("credential-add", { provider: $("credential-provider").value, name: $("credential-name").value, value })) $("credential-name").value = "";
+  event.submitter.disabled = false;
 });
 
 const discoveryGroups = {
@@ -797,6 +918,7 @@ function candidateCard(item, queue) {
   const card = node("article", "discovery-result");
   appendTitle(card, item, "h4", item.source || "Resultado");
   if (item.title) card.append(node("p", "metadata", item.source));
+  if (item.providers?.length) card.append(node("p", "metadata", `Encontrado mediante ${item.providers.join(", ")}`));
   appendContext(card, item, "p");
   if (!item.url) return card;
   const actions = node("div", "discovery-actions");
@@ -933,6 +1055,10 @@ $("shutdown").addEventListener("click", async () => {
     $("status").textContent = "EchoScope se cerró. Podés cerrar esta pestaña.";
   } catch (error) { notice(error.message, true); }
 });
+$("logout").addEventListener("click", async () => {
+  try { await api("logout", {}); window.location.reload(); }
+  catch (error) { notice(error.message, true); }
+});
 
 (async () => {
   choosePage("board");
@@ -940,6 +1066,12 @@ $("shutdown").addEventListener("click", async () => {
     const data = await api("bootstrap");
     ui.token = data.token;
     ui.practice = data.practice;
+    ui.username = data.username;
+    $("shutdown").hidden = !!ui.username;
+    $("logout").hidden = !ui.username;
+    $("account-name").hidden = !ui.username;
+    $("account-name").textContent = ui.username || "";
+    renderVault(data.credentials);
     const defaults = ui.practice ? ["live", "press", "reviews"] : ["news", "youtube", "live"];
     ui.defaults = defaults;
     const layout = preference(`panels.${ui.practice}`, defaults);
@@ -954,7 +1086,7 @@ $("shutdown").addEventListener("click", async () => {
     }
     ui.alertsVisible = preference("alerts", true) !== false;
     setTheme(data.theme);
-    $("edition").textContent = `${data.practice ? "PRÁCTICA" : "LOCAL"} · ${data.version}`;
+    $("edition").textContent = `${data.practice ? "PRÁCTICA" : ui.username ? "SERVIDOR" : "LOCAL"} · ${data.version}`;
     applyConfig(data, true);
     buildLayout();
     $("open-topic-search").disabled = false;

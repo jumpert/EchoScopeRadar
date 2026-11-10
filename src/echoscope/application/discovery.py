@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import re
 from contextlib import aclosing
@@ -7,13 +8,14 @@ from urllib.parse import urlsplit
 
 import aiohttp
 
-from echoscope.connectors.syndication import Feed
+from echoscope.connectors.syndication import Feed, PublicResolver, public_url
 from echoscope.connectors.youtube_comments import video_id
 from echoscope.domain.models import category, publication_title
 from echoscope.domain.tone import folded
 
 from .administration import RSS_TYPES, YOUTUBE_KEY
 from .ports import AuthRequired, ConnectorError, RateLimited, Request, Transient
+from .secrets import secrets_for_request
 
 BRAVE_KEY = "ECHOSCOPE_BRAVE_KEY"
 SOCIAL_DOMAINS = ("facebook.com", "instagram.com", "x.com", "tiktok.com", "reddit.com", "bsky.app")
@@ -74,12 +76,86 @@ async def search_web(terms, key, *, social=False):
             "source": host,
             "excerpt": item.get("description", "")[:500],
             "kind": kind,
+            "provider": "Brave",
         }
         for item in data.get("web", {}).get("results", [])[:20]
         if (address := public_result_url(item.get("url", "")))
         for url, host, kind in (indexed_candidate(address),)
         if not social or kind == "social"
     ]
+
+
+async def query_search(method, url, *, headers=None, payload=None, params=None, public_only=False):
+    connector = aiohttp.TCPConnector(resolver=PublicResolver()) if public_only else None
+    async with (
+        aiohttp.ClientSession(
+            connector=connector, trust_env=False, timeout=aiohttp.ClientTimeout(total=10)
+        ) as session,
+        session.request(
+            method, url, headers=headers, json=payload, params=params, allow_redirects=False
+        ) as response,
+    ):
+        if response.status in {401, 403}:
+            raise AuthRequired()
+        if response.status in {402, 429}:
+            raise RateLimited()
+        if response.status != 200:
+            raise Transient()
+        body = bytearray()
+        async for chunk in response.content.iter_chunked(65536):
+            body.extend(chunk)
+            if len(body) > 1024 * 1024:
+                raise Transient()
+        return json.loads(body)
+
+
+def indexed_results(rows, provider, address_field, excerpt_field):
+    results = []
+    for row in rows[:20]:
+        if url := public_result_url(row.get(address_field) or ""):
+            url, host, kind = indexed_candidate(url)
+            results.append(
+                {
+                    "url": url,
+                    "source": host,
+                    "kind": kind,
+                    "provider": provider,
+                    "title": (row.get("title") or "")[:300],
+                    "excerpt": (row.get(excerpt_field) or "")[:500],
+                }
+            )
+    return results
+
+
+async def tavily_search(terms, key):
+    data = await query_search(
+        "POST",
+        "https://api.tavily.com/search",
+        headers={"Authorization": f"Bearer {key}"},
+        payload={"query": f"{terms} Uruguay", "max_results": 12, "search_depth": "basic"},
+    )
+    return indexed_results(data.get("results", []), "Tavily", "url", "content")
+
+
+async def serper_search(terms, key):
+    data = await query_search(
+        "POST",
+        "https://google.serper.dev/search",
+        headers={"X-API-KEY": key},
+        payload={"q": terms, "gl": "uy", "hl": "es", "num": 12},
+    )
+    return indexed_results(data.get("organic", []), "Google mediante Serper", "link", "snippet")
+
+
+async def searx_search(terms, endpoint):
+    url = public_url(endpoint.rstrip("/") + "/search")
+    data = await query_search(
+        "GET",
+        url,
+        params={"q": f"{terms} Uruguay", "format": "json", "language": "es"},
+        public_only=True,
+    )
+    return indexed_results(data.get("results", []), "SearXNG", "url", "content")
 
 
 class TopicDiscovery:
@@ -168,7 +244,7 @@ class TopicDiscovery:
         ]
         providers = []
         notes = []
-        if os.environ.get(YOUTUBE_KEY):
+        if secrets_for_request().get(YOUTUBE_KEY):
             providers.extend(
                 [
                     ("Videos de YouTube", self._youtube(terms, live=False)),
@@ -177,12 +253,21 @@ class TopicDiscovery:
             )
         else:
             notes.append("Cargá una clave de YouTube para descubrir videos y directos.")
-        if key := os.environ.get(BRAVE_KEY):
+        if key := secrets_for_request().get(BRAVE_KEY):
             providers.append(("Web abierta", search_web(terms, key)))
             providers.append(("Redes sociales públicas", search_web(terms, key, social=True)))
-        else:
+        if key := secrets_for_request().get("ECHOSCOPE_TAVILY_KEY"):
+            providers.append(("Tavily", tavily_search(terms, key)))
+        if key := secrets_for_request().get("ECHOSCOPE_SERPER_KEY"):
+            providers.append(("Google mediante Serper", serper_search(terms, key)))
+        if endpoint := os.environ.get("ECHOSCOPE_SEARXNG_URL"):
+            providers.append(("SearXNG", searx_search(terms, endpoint)))
+        if not any(
+            label in {"Web abierta", "Tavily", "Google mediante Serper", "SearXNG"}
+            for label, _ in providers
+        ):
             notes.append(
-                "Cargá una clave de Brave Search para ampliar la consulta a la web abierta."
+                "Agregá una clave de un buscador en Claves API para ampliar la consulta a la web abierta."
             )
         if len(sources) > 18:
             notes.append("Se consultaron los primeros 18 feeds habilitados.")
@@ -215,6 +300,16 @@ class TopicDiscovery:
         unique = {}
         for item in matches:
             identity = item["url"] or (item["source"], item["title"], item["excerpt"])
+            labels = list(
+                dict.fromkeys(
+                    [
+                        *unique.get(identity, {}).get("providers", []),
+                        *([item["provider"]] if item.get("provider") else []),
+                    ]
+                )
+            )
             if identity not in unique or item["kind"] == "live":
-                unique[identity] = item
+                unique[identity] = dict(item)
+            if labels:
+                unique[identity]["providers"] = labels
         return list(unique.values()), notes

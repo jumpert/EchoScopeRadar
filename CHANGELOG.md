@@ -1,5 +1,12 @@
 # Historial de versiones
 
+## 0.7.0
+
+- Comentarios de YouTube agrupados por video, con título, hora y autor.
+- Filtros de alertas por revisión y tono. Selección individual y masiva de las alertas visibles, con estados para verificación, amenaza y descarte.
+- Modo servidor HTTPS con cuentas y almacenamiento cifrado de claves por usuario. Pestaña Claves API para nombrar y elegir credenciales.
+- Búsqueda en Brave, Tavily, Google mediante Serper y SearXNG configurable. Ayudas desplegables en las pantallas de configuración.
+
 ## 0.6.2
 
 - Vistas previas breves en todas las pestañas de la mesa, incluso en resultados sin coincidencias.

@@ -27,6 +27,7 @@ class CommentsUnavailable(ConnectorError):
 
 
 class YouTubeCommentsParams(YouTubeParams):
+    video_title: str | None = Field(default=None, max_length=300)
     max_pages: int = Field(default=2, ge=1, le=5)
     reply_requests: int = Field(default=8, ge=0, le=30)
 
@@ -101,7 +102,16 @@ async def _get(session, endpoint, params, headers):
         raise Transient() from None
 
 
-def _message(item, resource):
+async def video_titles(session, ids, headers):
+    data = await _get(session, "videos", {"part": "snippet", "id": ",".join(ids)}, headers)
+    return {
+        item["id"]: item["snippet"]["title"]
+        for item in data.get("items", [])
+        if item.get("id") and item.get("snippet", {}).get("title")
+    }
+
+
+def _message(item, resource, title=None):
     snippet = item.get("snippet", {})
     body = snippet.get("textOriginal") or snippet.get("textDisplay")
     if not item.get("id") or not body:
@@ -115,10 +125,14 @@ def _message(item, resource):
         snippet.get("authorDisplayName"),
         url=f"https://www.youtube.com/watch?{urlencode({'v': resource, 'lc': item['id']})}",
         published_at=parse_date(snippet.get("publishedAt")),
+        resource_title=title,
     )
 
 
 class YouTubeComments:
+    def __init__(self):
+        self.title = None
+
     async def poll(self, request: Request):
         params = YouTubeCommentsParams.model_validate(request.source.params)
         headers = youtube_headers(request.source.credential)
@@ -127,6 +141,14 @@ class YouTubeComments:
         async with aiohttp.ClientSession(
             trust_env=False, timeout=aiohttp.ClientTimeout(total=request.timeout_s)
         ) as session:
+            title = params.video_title or self.title
+            if not title:
+                try:
+                    title = await video_titles(session, [params.video_id], headers)
+                    title = title.get(params.video_id)
+                except (ConnectorError, TimeoutError):
+                    title = None
+            self.title = title
             for index in range(params.max_pages):
                 query = {
                     "part": "snippet,replies",
@@ -144,7 +166,7 @@ class YouTubeComments:
                 for thread in data.get("items", []):
                     details = thread.get("snippet", {})
                     root = details.get("topLevelComment", {})
-                    if message := _message(root, params.video_id):
+                    if message := _message(root, params.video_id, title):
                         messages.append(message)
                     replies = {
                         item["id"]: item
@@ -181,7 +203,7 @@ class YouTubeComments:
                     messages.extend(
                         message
                         for item in replies.values()
-                        if (message := _message(item, params.video_id))
+                        if (message := _message(item, params.video_id, title))
                     )
                 # Upstream pagination can shift between polls. The store deduplicates this recent window.
                 for start in range(0, len(messages), 50):

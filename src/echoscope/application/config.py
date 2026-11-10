@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -7,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from echoscope.domain.models import Severity
 from echoscope.domain.rules import Rule
+
+from .secrets import secrets_for_request
 
 
 class StrictModel(BaseModel):
@@ -18,7 +19,7 @@ class Credential(StrictModel):
     env: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
 
     def resolve(self) -> str | None:
-        return os.environ.get(self.env) or None
+        return secrets_for_request().get(self.env) or None
 
 
 class Source(StrictModel):

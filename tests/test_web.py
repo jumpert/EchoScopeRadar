@@ -92,6 +92,21 @@ async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path):
                 await asyncio.sleep(0.1)
         assert data["running"]
         assert data["alerts"]
+        alert = data["alerts"][0]
+        assert alert["review_state"] == "open"
+        assert (
+            await client.post(
+                "/api/alert-review",
+                json={"keys": [alert["review_key"]], "state": "threat"},
+                headers=headers,
+            )
+        ).status == 200
+        marked = await (
+            await client.get(f"/api/board?panels=&review=threat&tone={alert['tone']}")
+        ).json()
+        assert [(row["review_key"], row["review_state"]) for row in marked["alerts"]] == [
+            (alert["review_key"], "threat")
+        ]
         assert all(
             item["tone"] in {"positive", "negative", "mixed", "neutral"} for item in data["alerts"]
         )

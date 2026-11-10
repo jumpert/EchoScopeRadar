@@ -28,6 +28,7 @@
       <button type="button" id="tab-board" role="tab" aria-selected="true" aria-controls="board-page" data-page="board">Mesa de monitoreo</button>
       <button type="button" id="tab-sources" role="tab" aria-selected="false" aria-controls="sources-page" data-page="sources">Fuentes</button>
       <button type="button" id="tab-settings" role="tab" aria-selected="false" aria-controls="settings-page" data-page="settings">Tema y acceso</button>
+      <button type="button" id="tab-credentials" role="tab" aria-selected="false" aria-controls="credentials-page" data-page="credentials">Claves API</button>
       <span class="edition" id="edition">LOCAL</span>
     </div>
 
@@ -64,30 +65,49 @@
           <div class="alert-title"><span aria-hidden="true">◇</span><h2 id="alerts-title">Alertas</h2><span class="badge" id="alert-count">0</span></div>
           <div class="alert-controls">
             <button type="button" class="text-button" id="alert-review" aria-pressed="false">Para revisar</button>
-            <button type="button" class="text-button" id="hide-alerts" aria-expanded="true" aria-controls="alert-rows">Ocultar</button>
+            <button type="button" class="text-button" id="hide-alerts" aria-expanded="true" aria-controls="alert-content">Ocultar</button>
           </div>
         </header>
-        <div id="alert-rows" class="alert-rows"></div>
+        <div id="alert-content">
+          <div class="alert-toolbar">
+            <label><input type="checkbox" id="alert-select-all"> Seleccionar visibles</label>
+            <label>Estado <select id="alert-state-filter"><option value="all">Todas</option><option value="open">Sin verificar</option><option value="verified">Verificadas</option><option value="threat">Amenazas</option><option value="dismissed">Descartadas</option></select></label>
+            <label>Tono <select id="alert-tone-filter"><option value="all">Todos</option><option value="negative">Negativo</option><option value="mixed">Mixto</option><option value="neutral">Neutro</option><option value="positive">Positivo</option></select></label>
+            <label>Marcar como <select id="alert-state-action"><option value="verified">Verificadas</option><option value="threat">Amenazas</option><option value="dismissed">Descartadas</option><option value="open">Sin verificar</option></select></label>
+            <button type="button" id="alert-apply" class="button subtle" disabled>Aplicar</button><span id="alert-selected" role="status"></span>
+            <button type="button" id="alert-more" class="text-button" hidden>Cargar más</button>
+          </div>
+          <div id="alert-rows" class="alert-rows"></div>
+        </div>
       </section>
     </section>
 
     <section id="sources-page" role="tabpanel" aria-labelledby="tab-sources" class="settings-page" hidden>
       <div class="section-heading"><div><p class="eyebrow">CONFIGURACIÓN</p><h1>Fuentes</h1><p>Elegí qué medios, videos, directos y comunidades seguir.</p></div><button id="add-source" class="button primary" type="button">+ Agregar fuente</button></div>
+      <details class="inline-guide"><summary>Ayuda paso a paso</summary><ol><li>Elegí Agregar fuente y seleccioná el tipo de contenido.</li><li>Pegá el enlace. Para comentarios o reseñas de una página, podés usar Detectar feed.</li><li>Guardá la fuente, iniciá el seguimiento y revisá su estado en esta tabla.</li></ol></details>
       <div class="table-wrap"><table><thead><tr><th>Fuente</th><th>Intervalo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="source-rows"></tbody></table></div>
     </section>
 
     <section id="settings-page" role="tabpanel" aria-labelledby="tab-settings" class="settings-page" hidden>
       <div class="section-heading"><div><p class="eyebrow">CONFIGURACIÓN</p><h1>Tema y acceso</h1><p>Definí los términos del seguimiento y conectá YouTube.</p></div></div>
+      <details class="inline-guide"><summary>Ayuda paso a paso</summary><ol><li>Escribí un término por línea y guardá la lista blanca.</li><li>En Claves API, agregá tu clave y elegí cuál usar para cada proveedor.</li><li>Volvé aquí para verificar YouTube o buscá por tema desde la mesa.</li></ol></details>
       <div class="settings-grid">
         <form class="card" id="topic-form"><h2>Lista blanca</h2><label for="topic">Un término o frase por línea</label><textarea id="topic" rows="10" required></textarea><p>Para aprobar una variante, escribí <code>Ejército | ejersito</code>. Las aproximaciones aparecen en «Para revisar».</p><button class="button primary" type="submit">Guardar lista blanca</button></form>
-        <div class="card"><form id="key-form"><h2>Acceso a YouTube</h2><p id="key-status">Comprobando acceso…</p><label for="youtube-key">Clave de YouTube Data API</label><input id="youtube-key" type="password" autocomplete="off" maxlength="4096" required><p>La clave se usa durante la sesión del motor.</p><button class="button primary" type="submit">Cargar clave</button></form>
+        <div class="card"><div id="youtube-access"><h2>Acceso a YouTube</h2><p id="key-status">Comprobando acceso…</p></div>
         <form id="youtube-form" class="stack-form"><h2>Buscar un video</h2><label for="youtube-search">Palabras o tema</label><input id="youtube-search" maxlength="200" placeholder="Ejército Nacional Uruguay" required><button class="button subtle" type="submit">Buscar en YouTube</button></form><div id="video-results" class="video-results"></div></div>
-        <form id="web-key-form" class="card"><h2>Acceso a la web abierta</h2><p id="web-key-status">Comprobando acceso…</p><label for="web-key">Clave de Brave Search API (opcional)</label><input id="web-key" type="password" autocomplete="off" maxlength="4096" required><p>Amplía la búsqueda a sitios públicos indexados. La consulta se envía a Brave y puede consumir cuota. La clave se usa durante la sesión.</p><button class="button primary" type="submit">Cargar clave</button></form>
+      </div>
+    </section>
+    <section id="credentials-page" role="tabpanel" aria-labelledby="tab-credentials" class="settings-page" hidden>
+      <div class="section-heading"><div><p class="eyebrow">CONFIGURACIÓN</p><h1>Claves API</h1><p id="vault-status"></p></div></div>
+      <details class="inline-guide"><summary>Ayuda paso a paso</summary><ol><li>Elegí un proveedor y un nombre que te permita reconocer la clave.</li><li>Pegá la clave y guardala. La primera clave de cada proveedor se activa automáticamente.</li><li>Si tenés varias, usá la que corresponda a esta búsqueda. Los proveedores disponibles reciben el texto de la consulta.</li></ol></details>
+      <div class="settings-grid">
+        <form id="credential-form" class="card"><h2>Agregar clave</h2><label for="credential-provider">Proveedor</label><select id="credential-provider" required></select><label for="credential-name">Nombre de la clave</label><input id="credential-name" maxlength="80" placeholder="Ejemplo: cuenta institucional" required><label for="credential-value">Clave API</label><input id="credential-value" type="password" maxlength="4096" autocomplete="off" required><button type="submit" class="button primary">Guardar clave</button><p id="credential-feedback" role="status"></p></form>
+        <div class="card"><h2>Mis claves</h2><div id="credential-list"></div><p id="credential-providers"></p></div>
       </div>
     </section>
   </main>
 
-  <footer class="statusbar"><span id="status" role="status" aria-live="polite">Preparando la mesa…</span><span id="updated"></span><button type="button" id="shutdown" class="text-button">Cerrar EchoScope</button></footer>
+  <footer class="statusbar"><span id="status" role="status" aria-live="polite">Preparando la mesa…</span><span id="updated"></span><span id="account-name" hidden></span><button type="button" id="logout" class="text-button" hidden>Cerrar sesión</button><button type="button" id="shutdown" class="text-button">Cerrar EchoScope</button></footer>
 
   <dialog id="help-dialog" aria-labelledby="help-title">
     <div class="dialog-head"><div><p class="eyebrow">AYUDA</p><h2 id="help-title"></h2></div><button class="icon-button" type="button" data-close="help-dialog" aria-label="Cerrar ayuda">×</button></div>
@@ -96,7 +116,7 @@
 
   <dialog id="topic-search-dialog" aria-labelledby="topic-search-title">
     <div class="dialog-head"><div><p class="eyebrow">DESCUBRIMIENTO</p><h2 id="topic-search-title">Buscar por tema</h2></div><button type="button" class="icon-button" data-close="topic-search-dialog" aria-label="Cerrar búsqueda">×</button></div>
-    <p class="metadata">Escribí un tema. EchoScope consulta el historial, los feeds activos y los proveedores habilitados. YouTube y Brave reciben el texto de la consulta si cargaste sus claves.</p>
+    <p class="metadata">Escribí un tema. EchoScope consulta el historial, los feeds activos y los buscadores habilitados. Los proveedores habilitados reciben el texto de la consulta.</p>
     <form id="topic-search-form" class="input-row"><label class="sr" for="topic-search">Tema a buscar</label><input id="topic-search" required maxlength="200" placeholder="Ejército Nacional Uruguay"><button class="button primary" type="submit">Buscar</button></form>
     <p class="feedback" id="topic-search-status" role="status"></p>
     <div id="topic-search-results"></div>

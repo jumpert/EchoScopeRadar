@@ -80,3 +80,34 @@ async def test_discovery_uses_active_feeds_and_both_youtube_queries(monkeypatch)
     assert "inactivo" not in queries
     await discovery.search("ejército", config)
     assert queries.count("medio") == 1
+
+
+async def test_additional_search_providers_attribute_duplicate_results(monkeypatch):
+    monkeypatch.delenv("ECHOSCOPE_YOUTUBE_KEY", raising=False)
+    monkeypatch.delenv("ECHOSCOPE_BRAVE_KEY", raising=False)
+    monkeypatch.delenv("ECHOSCOPE_SEARXNG_URL", raising=False)
+    monkeypatch.setenv("ECHOSCOPE_TAVILY_KEY", "tavily-test")
+    monkeypatch.setenv("ECHOSCOPE_SERPER_KEY", "serper-test")
+
+    async def query(method, url, *, headers, payload):
+        assert method == "POST"
+        if url == "https://api.tavily.com/search":
+            assert headers == {"Authorization": "Bearer tavily-test"}
+            assert payload["query"] == "defensa Uruguay"
+            return {
+                "results": [
+                    {"title": "Defensa", "url": "https://example.org/uy", "content": "Resultado"}
+                ]
+            }
+        assert url == "https://google.serper.dev/search"
+        assert headers == {"X-API-KEY": "serper-test"} and payload["gl"] == "uy"
+        return {
+            "organic": [
+                {"title": "Defensa", "link": "https://example.org/uy", "snippet": "Resultado"}
+            ]
+        }
+
+    monkeypatch.setattr("echoscope.application.discovery.query_search", query)
+    discovery = TopicDiscovery(SimpleNamespace(practice=False))
+    items, _ = await discovery.search("defensa", SimpleNamespace(sources=[], jobs=[]))
+    assert len(items) == 1 and items[0]["providers"] == ["Tavily", "Google mediante Serper"]

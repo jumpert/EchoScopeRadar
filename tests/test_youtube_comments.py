@@ -48,6 +48,10 @@ async def test_youtube_search_threads_and_replies_via_http(monkeypatch):
         assert request.headers["x-goog-api-key"] == "test-key"
         endpoint = request.match_info["endpoint"]
         calls.append(endpoint)
+        if endpoint == "videos":
+            return web.json_response(
+                {"items": [{"id": request.query["id"], "snippet": {"title": "Título del video"}}]}
+            )
         if endpoint == "search":
             assert request.query["regionCode"] == "UY"
             assert "Defensa" in request.query["q"]
@@ -123,7 +127,8 @@ async def test_youtube_search_threads_and_replies_via_http(monkeypatch):
         assert all(item.kind == Kind.COMMENT for item in batches[0].messages)
         assert batches[0].messages[0].url.endswith("v=01234567890&lc=parent")
         assert batches[0].coverage_gap
-        assert calls == ["search", "commentThreads", "comments"]
+        assert calls == ["search", "videos", "commentThreads", "comments"]
+        assert all(item.resource_title == "Título del video" for item in batches[0].messages)
         videos = await find_videos("Defensa Uruguay", credential, live=True)
         assert videos[0].id == "01234567890"
         source.params["video_id"] = "11111111111"

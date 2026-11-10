@@ -28,6 +28,18 @@ from echoscope.domain.models import (
     category,
     utcnow,
 )
+from echoscope.domain.tone import message_tone
+
+
+def alert_identity(job, origin, external_id, body):
+    return sha256(
+        json.dumps((job, origin, external_id, body), ensure_ascii=False).encode()
+    ).hexdigest()
+
+
+def alert_key(result):
+    message = result.observation.message
+    return alert_identity(result.job_id, message.origin, message.external_id, message.text)
 
 
 def _date(value):
@@ -69,6 +81,8 @@ class Store:
                 "fold", 1, lambda value: value.casefold(), deterministic=True
             )
             connection.create_function("radar_category", 2, category, deterministic=True)
+            connection.create_function("radar_tone", 1, message_tone, deterministic=True)
+            connection.create_function("radar_alert_key", 4, alert_identity, deterministic=True)
 
     @asynccontextmanager
     async def opened(self, *, write=False):
@@ -389,6 +403,14 @@ class Store:
                 args,
             )
         ).all()
+        if any(item["metadata"].get("resource_title") for item in payload.values()):
+            await conn.execute(
+                text(f"""UPDATE message_sources AS s SET metadata=json_set(s.metadata, '$.resource_title', t.title)
+                FROM (SELECT v.id AS version, entry.value->>'$.metadata.resource_title' AS title {versions}) AS t
+                WHERE s.job=:job AND s.source=:source AND s.version=t.version AND t.title IS NOT NULL
+                  AND json_extract(s.metadata, '$.resource_title') IS NOT t.title"""),
+                args,
+            )
         if rules_by_message:
             rows = (
                 await conn.execute(
@@ -510,7 +532,7 @@ class Store:
                 .all()
             )
 
-    async def messages(self, query: HistoryQuery) -> list[Result]:
+    async def messages(self, query: HistoryQuery, *, review_state=None, tone=None) -> list[Result]:
         conditions = ["s.expires > :now"]
         confirmed = " AND a.confirmed=1" if self.match_methods else ""
         if query.matches_only:
@@ -521,6 +543,13 @@ class Store:
             conditions.append("""EXISTS(SELECT 1 FROM alerts a JOIN match_occurrences m ON m.alert=a.id
                                WHERE a.observation=s.id AND m.method='review')""")
         arguments = {"now": _iso(utcnow()), "limit": min(500, max(1, query.limit))}
+        if review_state:
+            conditions.append("""coalesce((SELECT r.state FROM alert_reviews r WHERE r.item =
+                radar_alert_key(s.job,json_extract(s.metadata,'$.origin'),json_extract(s.metadata,'$.external_id'),v.body)), 'open')=:review_state""")
+            arguments["review_state"] = review_state
+        if tone:
+            conditions.append("radar_tone(v.body)=:tone")
+            arguments["tone"] = tone
         for name, clause, value in (
             ("job", "s.job=:job", query.job_id),
             ("source", "s.source=:source", query.source_id),
@@ -539,7 +568,11 @@ class Store:
             ("before", "s.id<:before", query.before),
             ("after", "s.id>:after", query.after),
             ("kind", "json_extract(s.metadata, '$.kind')=:kind", query.kind),
-            ("exclude_kind", "json_extract(s.metadata, '$.kind')<>:exclude_kind", query.exclude_kind),
+            (
+                "exclude_kind",
+                "json_extract(s.metadata, '$.kind')<>:exclude_kind",
+                query.exclude_kind,
+            ),
             (
                 "category",
                 "radar_category(json_extract(s.metadata, '$.kind'),json_extract(s.metadata, '$.origin'))=:category",
@@ -593,6 +626,36 @@ class Store:
                 )
             )
         return results
+
+    async def alert_reviews(self, keys):
+        if not keys:
+            return {}
+        async with self.reader() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT item,state FROM alert_reviews WHERE item IN (SELECT value FROM json_each(:items))"
+                ),
+                {"items": json.dumps(list(keys))},
+            )
+            return dict(rows.tuples().all())
+
+    async def set_alert_reviews(self, keys, state):
+        async with self.transaction() as conn:
+            params = {"items": json.dumps(keys), "state": state, "changed": _iso(utcnow())}
+            if state == "open":
+                await conn.execute(
+                    text(
+                        "DELETE FROM alert_reviews WHERE item IN (SELECT value FROM json_each(:items))"
+                    ),
+                    params,
+                )
+            else:
+                await conn.execute(
+                    text("""INSERT INTO alert_reviews(item,state,changed)
+                    SELECT value,:state,:changed FROM json_each(:items) WHERE true
+                    ON CONFLICT(item) DO UPDATE SET state=excluded.state, changed=excluded.changed"""),
+                    params,
+                )
 
     async def desktop_setting(self, key):
         async with self.reader() as conn:

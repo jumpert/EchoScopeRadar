@@ -254,12 +254,13 @@ wheels = [
 
 [[package]]
 name = "echoscope-radar"
-version = "0.6.2"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "aiosqlite" },
     { name = "alembic" },
+    { name = "cryptography" },
     { name = "defusedxml" },
     { name = "filelock" },
     { name = "platformdirs" },
@@ -295,6 +296,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.12,<4" },
     { name = "aiosqlite", specifier = ">=0.21,<1" },
     { name = "alembic", specifier = ">=1.15,<2" },
+    { name = "cryptography", specifier = ">=44,<51" },
     { name = "defusedxml", specifier = ">=0.7,<1" },
     { name = "filelock", specifier = ">=3.16,<4" },
     { name = "grpcio", marker = "extra == 'youtube'", specifier = ">=1.68,<2" },

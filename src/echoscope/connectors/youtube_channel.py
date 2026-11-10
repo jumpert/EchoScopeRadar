@@ -121,15 +121,22 @@ class YouTubeChannel(_Channel):
                     )
                 )
             if any(match.confirmed for match in matches):
-                follow.append(identifier)
+                follow.append((identifier, (snippet.get("title") or "")[:300]))
         yield Batch(tuple(messages), request.checkpoint)
         if not follow:
             return
         start = int(request.checkpoint or 0) % len(follow)
         for offset in range(min(2, len(follow))):
-            identifier = follow[(start + offset) % len(follow)]
+            identifier, title = follow[(start + offset) % len(follow)]
             child = request.source.model_copy(
-                update={"params": {"video_id": identifier, "max_pages": 1, "reply_requests": 2}}
+                update={
+                    "params": {
+                        "video_id": identifier,
+                        "video_title": title,
+                        "max_pages": 1,
+                        "reply_requests": 2,
+                    }
+                }
             )
             try:
                 async for batch in YouTubeComments().poll(replace(request, source=child)):
