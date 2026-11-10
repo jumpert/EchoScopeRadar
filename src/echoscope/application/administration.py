@@ -454,8 +454,8 @@ class Administration:
         return await self.store.desktop_setting("theme") or "light"
 
     async def set_theme(self, name):
-        if name not in {"light", "dark"}:
-            raise ValueError("Elegí tema claro u oscuro.")
+        if name not in {"light", "middle-light", "dark", "darkest"}:
+            raise ValueError("Elegí un tema de la lista.")
         await self.store.set_desktop_setting("theme", name)
 
     async def probe(self, job_id):

@@ -100,7 +100,7 @@ class TopicInput(StrictModel):
 
 
 class ThemeInput(StrictModel):
-    value: Literal["light", "dark"]
+    value: Literal["light", "middle-light", "dark", "darkest"]
 
 
 class DiscoveryInput(StrictModel):
@@ -115,6 +115,7 @@ class ConversationInput(StrictModel):
 class ReportInput(StrictModel):
     start: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     end: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    layout: Literal["brief", "complete"] = "brief"
 
 
 class LoginInput(StrictModel):
@@ -342,7 +343,13 @@ def publication_display(message, matches):
 def resource_link(message):
     if message.origin.startswith("youtube:") and VIDEO_ID.fullmatch(message.resource_id):
         return f"https://www.youtube.com/watch?v={message.resource_id}"
-    if message.kind in {Kind.PRESS_COMMENT, Kind.REVIEW, Kind.FORUM_POST, Kind.SOCIAL_COMMENT}:
+    if message.kind in {
+        Kind.PRESS_COMMENT,
+        Kind.REVIEW,
+        Kind.FORUM_POST,
+        Kind.SOCIAL_COMMENT,
+        Kind.LIVE_CHAT,
+    }:
         return safe_url(message.resource_id) or safe_url(message.url)
     return safe_url(message.url)
 
@@ -351,6 +358,7 @@ def result_data(result, sources, *, report=False):
     message = result.observation.message
     matches = result.observation.matches
     confirmed = [item for item in matches if item.confirmed]
+    resource = resource_link(message)
     severity = next(
         (
             key
@@ -361,6 +369,7 @@ def result_data(result, sources, *, report=False):
     )
     return {
         "id": result.id,
+        "message_key": [message.origin, message.external_id],
         "job": result.job_id,
         "source": sources.get(result.source_id, result.source_id),
         "kind": message.kind,
@@ -371,8 +380,9 @@ def result_data(result, sources, *, report=False):
         "date": (message.published_at or message.captured_at).isoformat(),
         "captured": message.captured_at.isoformat(),
         "url": safe_url(message.url or ""),
-        "resource_url": resource_link(message),
+        "resource_url": resource,
         "resource_id": message.resource_id if message.origin.startswith("youtube:") else None,
+        "resource_key": (resource or (message.origin, message.resource_id or message.external_id)),
         "resource_title": message.resource_title,
         "title": publication_title(message) if report else None,
         "provider": "YouTube" if message.origin.startswith("youtube:") else None,
@@ -522,7 +532,15 @@ async def board(request):
     rendered = {
         view: [result_data(item, sources) for item in rows] for view, rows in zip(views, pages)
     }
-    await group_video_titles(state, rendered.get("youtube", []))
+    await group_video_titles(
+        state,
+        [
+            row
+            for view in ("youtube", "live")
+            for row in rendered.get(view, [])
+            if row["provider"] == "YouTube"
+        ],
+    )
     return web.json_response(
         {
             "running": bool(service.radar),
@@ -537,6 +555,8 @@ async def board(request):
                 {
                     "id": key,
                     "name": snap.source.label or snap.source.id,
+                    "source_id": snap.source.id,
+                    "enabled": snap.job.enabled,
                     "state": snap.state,
                     "availability": snap.availability,
                     "detail": snap.detail,
@@ -900,7 +920,9 @@ async def export_report(state, fields):
         if youtube:
             await group_video_titles(state, youtube)
         records.sort(key=lambda item: item["captured"], reverse=True)
-        body = await asyncio.to_thread(report_pdf, records, start, end, state.practice)
+        body = await asyncio.to_thread(
+            report_pdf, records, start, end, state.practice, layout=fields.layout
+        )
     return web.Response(
         body=body,
         content_type="application/pdf",

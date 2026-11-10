@@ -4,7 +4,7 @@ if exist "%~dp0EchoScopeRadar.exe" (
   start "" "%~dp0EchoScopeRadar.exe" %*
   exit /b 0
 )
-set "PACKAGED=%~dp0dist\0.8.0\EchoScopeRadar\EchoScopeRadar.exe"
+set "PACKAGED=%~dp0dist\0.9.0\EchoScopeRadar\EchoScopeRadar.exe"
 if exist "%PACKAGED%" (
   start "" "%PACKAGED%" %*
   exit /b 0

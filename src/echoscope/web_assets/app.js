@@ -120,13 +120,11 @@ function notice(message, failure = false) {
   $("status").textContent = message;
 }
 
+const themeNames = new Set(["light", "middle-light", "dark", "darkest"]);
 function setTheme(theme) {
-  ui.theme = theme === "light" ? "light" : "dark";
+  ui.theme = themeNames.has(theme) ? theme : "dark";
   document.documentElement.dataset.theme = ui.theme;
-  $("theme").textContent = ui.theme === "dark" ? "☼" : "☾";
-  const label = ui.theme === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro";
-  $("theme").setAttribute("aria-label", label);
-  $("theme").title = label;
+  $("theme").value = ui.theme;
 }
 
 function applyConfig(data, updateTopic = false) {
@@ -288,14 +286,15 @@ function buildLayout() {
     const head = node("header", "stream-head");
     head.append(title, actions);
     const meta = node("div", "stream-meta", "Preparando flujo…");
+    const coverage = node("div", "stream-coverage");
     const list = node("div", "stream-list");
     list.setAttribute("role", "list");
     const load = button("Cargar más historial", "text-button", () => {
       ui.limit = Math.min(200, ui.limit + 45);
       refresh(true);
     });
-    panel.append(head, meta, list, load);
-    streams.set(key, { panel, meta, list, expand, load, arrange, signature: null });
+    panel.append(head, meta, coverage, list, load);
+    streams.set(key, { panel, meta, coverage, list, expand, load, arrange, signature: null });
   }
   updateLayout();
 }
@@ -392,25 +391,25 @@ function withOrigin(control, item) {
   return row;
 }
 
-function messageRow(item, grouped = false) {
+function messageRow(item, group = null) {
   const control = button("", "record", () => showDetails(item));
   control.append(node("span", "record-time", time.format(new Date(item.date))), toneBadge(item.tone));
   const text = node("span", "record-body");
-  if (!grouped || item.kind !== "YOUTUBE_VIDEO") appendTitle(text, item);
+  if (!group || !["YOUTUBE_VIDEO", "YOUTUBE_LIVE"].includes(item.kind)) appendTitle(text, item);
   text.append(node("span", "author", item.author || item.source));
   appendContext(text, item, "span", true);
   control.append(text);
-  return withOrigin(control, item);
+  return group && item.url === group.url ? control : withOrigin(control, item);
 }
 
-function renderVideoGroups(container, rows, empty) {
+function renderVideoGroups(container, rows, empty, live) {
   const groups = new Map();
   for (const item of rows) {
-    const id = item.resource_id || String(item.id);
-    if (!groups.has(id)) groups.set(id, { id, title: item.resource_title || item.title, url: item.resource_url, rows: [], seen: new Set() });
+    const id = JSON.stringify(item.resource_key);
+    if (!groups.has(id)) groups.set(id, { id, title: "", source: item.source, resource: item.resource_id, url: item.resource_url, rows: [], seen: new Set() });
     const group = groups.get(id);
     if (item.resource_title || item.title) group.title = item.resource_title || item.title;
-    const identity = item.url ? `${item.kind}:${item.url}` : String(item.id);
+    const identity = JSON.stringify(item.message_key);
     if (!group.seen.has(identity)) {
       group.seen.add(identity);
       group.rows.push(item);
@@ -418,10 +417,10 @@ function renderVideoGroups(container, rows, empty) {
   }
   replaceRecords(container, [...groups.values()], (group) => {
     const section = node("section", "video-group");
-    const title = group.title || `Video de YouTube · ${group.id}`;
+    const title = group.title || `${live ? "Directo" : "Video"} · ${group.resource || group.source}`;
     const heading = node("h3", "publication-title");
     heading.append(group.url ? originLink(group.url, title, "video-title-link") : document.createTextNode(title));
-    section.append(heading, ...group.rows.map((item) => messageRow(item, true)));
+    section.append(heading, ...group.rows.map((item) => messageRow(item, group)));
     return section;
   }, empty);
 }
@@ -429,6 +428,11 @@ function renderVideoGroups(container, rows, empty) {
 function renderPanel(key, rows, statuses) {
   const stream = streams.get(key);
   const applicable = statuses.filter((item) => item.categories.includes(key));
+  const configured = new Set(applicable.map((item) => item.source_id)).size;
+  const enabled = new Set(applicable.filter((item) => item.enabled).map((item) => item.source_id)).size;
+  const resources = new Set(rows.map((item) => JSON.stringify(item.resource_key))).size;
+  stream.coverage.textContent = `Fuentes: ${enabled} de ${configured} · Recursos visibles: ${resources}`;
+  stream.coverage.title = "Fuentes habilitadas sobre el total configurado. Los recursos son publicaciones, conversaciones o feeds distintos en los resultados visibles.";
   const next = applicable.filter((item) => item.next).map((item) => item.next).sort()[0];
   const live = applicable.some((item) => item.availability === "LIVE" && item.state === "RUNNING");
   const watching = applicable.some((item) => item.state === "RUNNING");
@@ -451,8 +455,8 @@ function renderPanel(key, rows, statuses) {
   const signature = JSON.stringify([empty, rows]);
   if (signature === stream.signature) return;
   stream.signature = signature;
-  if (key === "youtube") renderVideoGroups(stream.list, rows, empty);
-  else replaceRecords(stream.list, rows, messageRow, empty);
+  if (key === "youtube" || key === "live") renderVideoGroups(stream.list, rows, empty, key === "live");
+  else replaceRecords(stream.list, rows, (item) => messageRow(item), empty);
   if (!rows.length && (needsKey || (key === "reviews" && !ui.practice))) {
     const action = needsKey ? button("Ir a Claves API", "button subtle", () => {
       choosePage("credentials");
@@ -711,11 +715,13 @@ for (const [selector, key] of [[".board-heading h1", "board"], ["#sources-page h
   document.querySelector(selector).after(point);
 }
 $("monitor").addEventListener("click", () => runAction("monitor", { enabled: !ui.running }));
-$("theme").addEventListener("click", async () => {
+$("theme").addEventListener("change", async () => {
   const previous = ui.theme;
-  setTheme(previous === "dark" ? "light" : "dark");
+  setTheme($("theme").value);
+  $("theme").disabled = true;
   try { await api("theme", { value: ui.theme }); }
   catch (error) { setTheme(previous); notice(error.message, true); }
+  finally { $("theme").disabled = false; }
 });
 $("restore-layout").addEventListener("click", () => {
   if (ui.focus) focusPanel(ui.focus);
@@ -1062,7 +1068,7 @@ $("report-form").addEventListener("submit", async (event) => {
   try {
     const response = await fetch("/api/report", {
       method: "POST", headers: { "Content-Type": "application/json", "X-EchoScope-Token": ui.token },
-      body: JSON.stringify({ start, end }), signal: AbortSignal.timeout(90000),
+      body: JSON.stringify({ start, end, layout: $("report-layout").value }), signal: AbortSignal.timeout(90000),
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));

@@ -35,7 +35,9 @@ Brave Search agrega resultados regionales y publicaciones públicas indexadas en
 
 ## Descargar un reporte de alertas
 
-En la mesa elegí **Descargar PDF**, seleccioná las fechas de captura en UTC y presioná **Generar PDF**. Incluye coincidencias confirmadas del historial retenido y de las vistas previas aún disponibles en la sesión. El resumen muestra registros, conversaciones y alertas críticas por sitio. El detalle incluye fecha, tipo, término y enlaces. Los sitios y feeds incluyen un extracto y tono estimado cuando están disponibles. YouTube aparece como un listado de alertas locales con su enlace original.
+En la mesa elegí **Descargar PDF** y seleccioná las fechas de captura (UTC). Para papel, usá **Resumen para imprimir**: muestra el estado de revisión del período y hasta cinco publicaciones, con hasta dos alertas por publicación. Prioriza las amenazas marcadas y las alertas críticas sin verificar. Usá **Detalle completo** para incluir también las descartadas y el resto de las coincidencias del historial y la sesión. Los enlaces son clicables; las direcciones cortas también se leen en papel. YouTube se muestra con enlaces, fuera de las cifras y sin transcribir el chat.
+
+Cada panel muestra cuántas fuentes están habilitadas sobre las configuradas y cuántos recursos distintos aparecen con el filtro actual. En **Chat en vivo**, los mensajes se reúnen bajo su transmisión; si se conoce, el título abre el enlace original. El selector **Tema de color** permite elegir Claro, Claro medio, Oscuro o Muy oscuro.
 
 ## Agregar contenido
 

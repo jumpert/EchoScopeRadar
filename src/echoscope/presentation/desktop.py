@@ -479,8 +479,9 @@ class Desktop:
             self.toggle()
 
     def _restore_theme(self, name):
-        self.theme_choice.set("Oscuro" if name == "dark" else "Claro")
-        paint(self.root, "dark" if name == "dark" else "light", self.body, self.terms)
+        dark = name in {"dark", "darkest"}
+        self.theme_choice.set("Oscuro" if dark else "Claro")
+        paint(self.root, "dark" if dark else "light", self.body, self.terms)
 
     def _theme_changed(self, _event=None):
         name = "dark" if self.theme_choice.get() == "Oscuro" else "light"

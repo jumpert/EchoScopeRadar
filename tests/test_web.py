@@ -87,9 +87,9 @@ async def test_review_guide_saves_publication_address_with_detected_list(tmp_pat
 async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path, monkeypatch):
     exported = []
 
-    def capture(rows, *args):
+    def capture(rows, *args, **kwargs):
         exported.extend(rows)
-        return report_pdf(rows, *args)
+        return report_pdf(rows, *args, **kwargs)
 
     monkeypatch.setattr("echoscope.presentation.web.report_pdf", capture)
     app = create_app(tmp_path / "web.sqlite", practice=True, auto_start=False)
@@ -122,11 +122,12 @@ async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path, 
                 headers=headers | {"Origin": "https://other.example"},
             )
         ).status == 403
-        assert (
-            await client.post("/api/theme", json={"value": "light"}, headers=headers)
-        ).status == 200
-        settings = await (await client.get("/api/bootstrap")).json()
-        assert settings["theme"] == "light"
+        for theme in ("light", "middle-light", "darkest"):
+            assert (
+                await client.post("/api/theme", json={"value": theme}, headers=headers)
+            ).status == 200
+            settings = await (await client.get("/api/bootstrap")).json()
+            assert settings["theme"] == theme
         assert (
             await client.post("/api/monitor", json={"enabled": True}, headers=headers)
         ).status == 200
@@ -137,6 +138,20 @@ async def test_local_dashboard_connects_streams_settings_and_controls(tmp_path, 
                     break
                 await asyncio.sleep(0.1)
         assert data["running"]
+        live = data["panels"]["live"]
+        assert len({tuple(item["resource_key"]) for item in live}) == 1
+        assert len({tuple(item["message_key"]) for item in live}) == len(live)
+        assert len(live) > 1
+        assert (
+            len(
+                {
+                    row["source_id"]
+                    for row in data["statuses"]
+                    if "live" in row["categories"] and row["enabled"]
+                }
+            )
+            == 1
+        )
         assert data["alerts"]
         alert = data["alerts"][0]
         assert alert["review_state"] == "open"

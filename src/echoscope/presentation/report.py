@@ -8,10 +8,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import (
     KeepTogether,
-    LongTable,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
+    Table,
     TableStyle,
 )
 
@@ -29,7 +29,6 @@ KINDS = {
     "SOCIAL_COMMENT": "Respuesta en red social",
 }
 LEVELS = {"critical": "Crítica", "important": "Importante", "info": "Informativa"}
-TONES = {"positive": "Positivo", "negative": "Negativo", "mixed": "Mixto", "neutral": "Neutro"}
 REVIEWS = {
     "open": "Sin verificar",
     "verified": "Verificada",
@@ -47,6 +46,8 @@ PUBLICATIONS = {
     "SOCIAL_COMMENT": "Publicación en red social",
     "COMMENT": "Comentarios",
 }
+BRIEF_GROUP_LIMIT = 5
+BRIEF_ROWS_PER_GROUP = 2
 
 
 def report_groups(rows):
@@ -101,15 +102,41 @@ def report_link(address, label, style):
     )
 
 
-def report_pdf(rows, start, end, practice):
+def report_priority(row):
+    state = row["review_state"]
+    severity = {"critical": 0, "important": 1, "info": 2}[row["severity"]]
+    return (
+        0 if state == "threat" else 1 if state == "open" else 2 if state == "verified" else 3,
+        severity,
+        row["tone"] != "negative",
+    )
+
+
+def report_selection(rows, *, brief):
+    groups = list(report_groups(rows))
+    if not brief:
+        return groups
+    ranked = []
+    for label, title, parent, items in groups:
+        relevant = [row for row in items if row["review_state"] != "dismissed"]
+        if relevant:
+            ranked.append((label, title, parent, sorted(relevant, key=report_priority)))
+    ranked.sort(key=lambda group: report_priority(group[3][0]))
+    return [
+        (label, title, parent, items[:BRIEF_ROWS_PER_GROUP])
+        for label, title, parent, items in ranked[:BRIEF_GROUP_LIMIT]
+    ]
+
+
+def report_pdf(rows, start, end, practice, *, layout="brief"):
     output = BytesIO()
     doc = SimpleDocTemplate(
         output,
         pagesize=A4,
-        rightMargin=42,
-        leftMargin=42,
-        topMargin=43,
-        bottomMargin=43,
+        rightMargin=43,
+        leftMargin=43,
+        topMargin=38,
+        bottomMargin=39,
         title="EchoScope Radar - Reporte de alertas",
         author="EchoScope Radar",
     )
@@ -118,109 +145,128 @@ def report_pdf(rows, start, end, practice):
         ParagraphStyle(
             "Meta",
             fontName="Helvetica",
-            fontSize=9,
+            fontSize=10,
             leading=12,
-            textColor=colors.HexColor("#42546a"),
+            textColor=colors.HexColor("#313131"),
         )
     )
-    styles.add(ParagraphStyle("SmallCell", fontName="Helvetica", fontSize=9, leading=11))
-    styles["Title"].textColor = colors.HexColor("#102b44")
-    styles["Heading2"].textColor = colors.HexColor("#087684")
+    styles["Title"].alignment = 0
+    styles["Title"].fontSize = 24
+    styles["Title"].leading = 28
+    styles["Heading2"].fontSize = 13
+    styles["Heading2"].leading = 15
+    styles["Heading3"].fontName = "Helvetica-Bold"
+    styles["Heading3"].fontSize = 11
+    styles["Heading3"].leading = 13
+    styles["BodyText"].fontSize = 11
+    styles["BodyText"].leading = 14
+    styles.add(ParagraphStyle("Figure", fontName="Helvetica-Bold", fontSize=16, leading=18))
+    brief = layout == "brief"
+    subtitle = "Resumen para imprimir" if brief else "Detalle completo"
+    period = f"Capturas: {start:%d/%m/%Y} al {end:%d/%m/%Y} (UTC)"
     story = [
-        Paragraph("ECHOSCOPE RADAR  /  MONITOREO", styles["Meta"]),
+        Paragraph(f"ECHOSCOPE RADAR  /  {subtitle.upper()}", styles["Meta"]),
         Paragraph("Reporte de alertas", styles["Title"]),
-        Paragraph(f"Fecha de captura (UTC): {start:%d/%m/%Y} al {end:%d/%m/%Y}", styles["Meta"]),
-        Spacer(1, 8),
-        Paragraph(
-            "Incluye registros con coincidencias confirmadas por las reglas. "
-            "El estado corresponde a la revisión actual de esos registros. "
-            "Marcar una amenaza es una decisión del operador.",
-            styles["BodyText"],
-        ),
+        Paragraph(f"{period}{' · Datos simulados' if practice else ''}", styles["Meta"]),
     ]
-    if practice:
-        story.append(Paragraph("MODO DE PRÁCTICA · Datos simulados", styles["Heading2"]))
 
     if rows:
-        story.append(Paragraph("Resumen de alertas y revisión", styles["Heading2"]))
         eligible = [row for row in rows if row["provider"] != "YouTube"]
         counts = Counter(row["review_state"] for row in eligible)
-        reviewed = len(eligible) - counts["open"]
-        summary = [
-            ["Indicador", "Registros"],
-            ["Registros con alerta", str(len(eligible))],
-            ["Sin verificar", str(counts["open"])],
-            ["Verificadas", str(counts["verified"])],
-            ["Marcadas como amenaza", str(counts["threat"])],
-            ["Descartadas", str(counts["dismissed"])],
-        ]
-        table = LongTable(summary, colWidths=[doc.width - 90, 90], repeatRows=1, hAlign="LEFT")
-        table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#15344e")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    (
-                        "ROWBACKGROUNDS",
-                        (0, 1),
-                        (-1, -1),
-                        [colors.HexColor("#eef5f8"), colors.white],
-                    ),
-                    ("ALIGN", (1, 0), (-1, -1), "CENTER"),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ]
-            )
-        )
-        story.append(table)
         if eligible:
+            story.append(Paragraph("Estado del período", styles["Heading2"]))
+            summary = [
+                ("Con alerta", len(eligible)),
+                ("Sin verificar", counts["open"]),
+                ("Verificadas", counts["verified"]),
+                ("Amenazas marcadas", counts["threat"]),
+                ("Descartadas", counts["dismissed"]),
+            ]
+            table = Table(
+                [
+                    [Paragraph(label, styles["Meta"]) for label, _ in summary],
+                    [Paragraph(str(total), styles["Figure"]) for _, total in summary],
+                ],
+                colWidths=[(doc.width - 12) / 5] * 5,
+                hAlign="LEFT",
+                style=TableStyle(
+                    [
+                        ("LINEABOVE", (0, 0), (-1, 0), 0.5, colors.black),
+                        ("LINEBELOW", (0, -1), (-1, -1), 0.5, colors.black),
+                        ("BOTTOMPADDING", (0, -1), (-1, -1), 6),
+                    ]
+                ),
+            )
+            story.append(table)
             critical_pending = sum(
                 row["severity"] == "critical" and row["review_state"] == "open" for row in eligible
             )
             story.append(Spacer(1, 7))
             story.append(
                 Paragraph(
-                    f"Revisadas: {reviewed} de {len(eligible)} ({100 * reviewed / len(eligible):.0f}%). "
-                    f"Pendientes: {counts['open']}. Pendientes de severidad crítica: {critical_pending}.",
+                    f"<b>Atención:</b> {critical_pending} alertas críticas sin verificar. "
+                    "Las amenazas marcadas reflejan decisiones del operador.",
                     styles["BodyText"],
                 )
             )
             terms = Counter(term for row in eligible for term in set(row["confirmed_terms"]))
-            top = ", ".join(f"{term} ({count})" for term, count in terms.most_common(5))
-            story.append(Paragraph(f"Términos más frecuentes: {escape(top)}.", styles["Meta"]))
-            origins = Counter(
-                (urlsplit(row["resource_url"]).hostname if row["resource_url"] else None)
-                or row["source"]
-                for row in eligible
-            )
-            top = ", ".join(f"{name} ({count})" for name, count in origins.most_common(5))
-            story.append(Paragraph(f"Fuentes con más alertas: {escape(top)}.", styles["Meta"]))
+            top = ", ".join(f"{term[:45]} ({count})" for term, count in terms.most_common(3))
+            if top:
+                story.append(Paragraph(f"Términos frecuentes: {escape(top)}.", styles["Meta"]))
         if len(eligible) != len(rows):
             story.append(Spacer(1, 7))
             story.append(
                 Paragraph(
-                    "YouTube se muestra como referencias agrupadas, fuera de las métricas. "
-                    "Las etiquetas de revisión son de EchoScope Radar, no de YouTube.",
+                    "YouTube: referencias al original, sin transcribir el chat ni incluirlo en las cifras.",
                     styles["Meta"],
                 )
             )
-        story.append(Paragraph("Detalle por publicación", styles["Heading2"]))
-        for label, title, parent, records in report_groups(rows):
-            header = [Paragraph(f"{escape(label)} · {escape(title[:300])}", styles["Heading3"])]
-            link = (
-                report_link(parent, "Abrir publicación original", styles["Meta"])
-                if parent
-                else None
+        selected = report_selection(rows, brief=brief)
+        story.append(
+            Paragraph(
+                "Publicaciones prioritarias" if brief else "Detalle por publicación",
+                styles["Heading2"],
             )
+        )
+        if brief:
+            displayed = sum(row["provider"] != "YouTube" for *_, items in selected for row in items)
+            story.append(
+                Paragraph(
+                    f"Fuera del detalle breve: {len(eligible) - displayed} registros del resumen. "
+                    "Para consultar todos los registros, elegí Detalle completo.",
+                    styles["Meta"],
+                )
+            )
+        if not selected:
+            story.append(Paragraph("No hay publicaciones para priorizar.", styles["BodyText"]))
+        for label, title, parent, records in selected:
+            limit = 140 if brief else 240
+            headline = title if len(title) <= limit else title[: limit - 1] + "…"
+            header = [
+                Spacer(1, 5),
+                Paragraph(f"{escape(label)} · {escape(headline)}", styles["Heading3"]),
+            ]
+            short_link = (
+                parent
+                if parent and len(parent) <= 104
+                else (
+                    f"{urlsplit(parent).hostname} / Abrir publicación original" if parent else None
+                )
+            )
+            link = report_link(parent, short_link, styles["Meta"]) if parent else None
             header.append(link or Paragraph("Enlace original no disponible.", styles["Meta"]))
-            ordered = sorted(records, key=lambda row: (row["kind"] in DISCUSSIONS, row["date"]))
+            ordered = (
+                records
+                if brief
+                else sorted(records, key=lambda row: (row["kind"] in DISCUSSIONS, row["date"]))
+            )
             for index, item in enumerate(ordered):
                 story.append(
                     KeepTogether(
                         (header if index == 0 else [])
-                        + record_lines(item, styles, excerpt=item["provider"] != "YouTube")
+                        + record_lines(
+                            item, styles, excerpt=item["provider"] != "YouTube", brief=brief
+                        )
                     )
                 )
     if not rows:
@@ -229,48 +275,51 @@ def report_pdf(rows, start, end, practice):
         )
 
     def footer(canvas, document):
-        canvas.setStrokeColor(colors.HexColor("#c9d5e0"))
-        canvas.line(42, 35, A4[0] - 42, 35)
-        canvas.setFont("Helvetica", 8)
-        canvas.setFillColor(colors.HexColor("#42546a"))
-        canvas.drawString(42, 22, "EchoScope Radar  /  Reporte local")
-        canvas.drawRightString(A4[0] - 42, 22, f"Página {document.page}")
+        canvas.setStrokeColor(colors.HexColor("#999999"))
+        canvas.line(43, 32, A4[0] - 43, 32)
+        canvas.setFont("Helvetica", 9)
+        canvas.setFillColor(colors.black)
+        canvas.drawString(43, 19, "EchoScope Radar · " + period)
+        canvas.drawRightString(A4[0] - 43, 19, f"Página {document.page}")
 
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
     return output.getvalue()
 
 
-def record_lines(item, styles, *, excerpt):
-    when = item["date"][:16].replace("T", " ")
+def record_lines(item, styles, *, excerpt, brief):
+    when = f"{item['date'][8:10]}/{item['date'][5:7]} {item['date'][11:16]}"
     kind = KINDS.get(item["kind"], "Resultado")
     level = LEVELS[item["severity"]]
-    identity = f"{when} UTC · {kind} · {item['source']} · {level} · {REVIEWS[item['review_state']]}"
+    identity = f"{when} · {kind} · {level} · {REVIEWS[item['review_state']]}"
     if item["job"] == "preview":
         identity += " · Vista previa"
     if excerpt and item["author"]:
-        identity += f" · {item['author']}"
-    fields = [Spacer(1, 8), Paragraph(f"<b>{escape(identity)}</b>", styles["Meta"])]
-    terms = " · ".join(item["confirmed_terms"])
-    tone = f" · Tono estimado: {TONES[item['tone']]}" if excerpt else ""
-    fields.append(Paragraph(f"<b>{escape(terms)}</b>{escape(tone)}", styles["BodyText"]))
+        identity += f" · {item['author'][:80]}"
+    fields = [Spacer(1, 5), Paragraph(f"<b>{escape(identity)}</b>", styles["Meta"])]
+    terms = " · ".join(item["confirmed_terms"][: 3 if brief else 12])[:170]
     if excerpt:
+        limit = 145 if brief else 340
         body = "".join(fragment[0] for fragment in item["fragments"])
-        if len(body) > 520:
-            offset = next(
-                (
-                    body.casefold().find(term.casefold())
-                    for term in item["confirmed_terms"]
-                    if term.casefold() in body.casefold()
-                ),
-                0,
+        original_length = len(body)
+        offset = next(
+            (
+                body.casefold().find(term.casefold())
+                for term in item["confirmed_terms"]
+                if term.casefold() in body.casefold()
+            ),
+            0,
+        )
+        start = max(0, offset - 34) if len(body) > limit else 0
+        body = " ".join(body[start : start + limit].split())
+        body = ("…" if start else "") + body + ("…" if original_length > start + limit else "")
+        fields.append(
+            Paragraph(
+                f"<b>{escape(terms)}</b> · {escape(body)}" if body else escape(terms),
+                styles["BodyText"],
             )
-            start = max(0, offset - 100)
-            body = (
-                ("…" if start else "")
-                + body[start : start + 520]
-                + ("…" if len(body) > start + 520 else "")
-            )
-        fields.append(Paragraph(escape(body), styles["Meta"]))
+        )
+    else:
+        fields.append(Paragraph(escape(terms), styles["Meta"]))
     if item["url"] and item["url"] != item["resource_url"]:
         link = report_link(item["url"], "Abrir registro individual", styles["Meta"])
         if link:

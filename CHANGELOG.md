@@ -1,5 +1,11 @@
 # Historial de versiones
 
+## 0.9.0
+
+- Chat en vivo agrupado por transmisión, con título y enlace original cuando están disponibles. Cada panel distingue fuentes habilitadas de recursos visibles.
+- Reporte A4 para imprimir con publicaciones prioritarias, fragmentos breves y un resumen de revisión. El formato de detalle completo sigue disponible.
+- Selector de apariencia con cuatro temas: Claro, Claro medio, Oscuro y Muy oscuro.
+
 ## 0.8.0
 
 - Guía interactiva de reseñas que abre el formulario preparado para buscar una lista pública desde el enlace de una página.

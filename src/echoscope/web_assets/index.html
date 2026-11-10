@@ -18,7 +18,11 @@
     </a>
     <div class="header-actions">
       <span class="live-pill" id="run-status"><i></i><span>Conectando</span></span>
-      <button id="theme" class="icon-button" type="button" title="Cambiar tema" aria-label="Cambiar tema">☼</button>
+      <label class="sr" for="theme">Tema de color</label>
+      <select id="theme" class="theme-picker" title="Tema de color">
+        <option value="light">Claro</option><option value="middle-light">Claro medio</option>
+        <option value="dark" selected>Oscuro</option><option value="darkest">Muy oscuro</option>
+      </select>
       <button id="monitor" class="button primary" type="button" disabled>Pausar seguimiento</button>
     </div>
   </header>
@@ -144,10 +148,11 @@
 
   <dialog id="report-dialog" aria-labelledby="report-title">
     <div class="dialog-head"><div><p class="eyebrow">EXPORTACIÓN</p><h2 id="report-title">Reporte de alertas</h2></div><button type="button" class="icon-button" data-close="report-dialog" aria-label="Cerrar reporte">×</button></div>
-    <p class="metadata">Agrupa los registros con alertas por publicación original e incluye el estado actual de revisión. Las fechas corresponden a la captura (UTC).</p>
+    <p class="metadata">El resumen para imprimir empieza por las alertas que requieren atención. Las cifras cubren todo el período elegido; las fechas de captura se expresan en UTC.</p>
     <form id="report-form" class="source-form">
       <label for="report-start">Desde</label><input type="date" id="report-start" required>
       <label for="report-end">Hasta</label><input type="date" id="report-end" required>
+      <label for="report-layout">Formato</label><select id="report-layout"><option value="brief">Resumen para imprimir</option><option value="complete">Detalle completo</option></select>
       <p id="report-status" class="feedback" role="status"></p>
       <div class="dialog-actions"><button class="button primary" type="submit">Generar PDF</button><button class="button subtle" type="button" data-close="report-dialog">Cancelar</button></div>
     </form>

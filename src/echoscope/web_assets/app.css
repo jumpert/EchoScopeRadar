@@ -15,6 +15,22 @@
   --brand-start:#dcebdd; --brand-end:#e1eaf9; --brand-line:#a78a46;
   --red:#aa2449; --yellow:#775108; --red-bg:#fbe0e8; --yellow-bg:#fff0cb; --review-bg:#efe4fb;
 }
+:root[data-theme="middle-light"] {
+  color-scheme: light;
+  --base:#cbd9d0; --surface:#e3ece5; --surface-2:#d8e5dc; --raised:#c2d4c7; --line:#859f8d;
+  --text:#142b21; --muted:#365244; --quiet:#405e4d; --accent:#244c37; --accent-text:#fff;
+  --cyan:#005b65; --violet:#59358b; --green:#155737; --blue:#264681; --orange:#7d4515;
+  --brand-start:#cfdfd4; --brand-end:#d7e0ec; --brand-line:#8c702e;
+  --red:#941c3d; --yellow:#694506; --red-bg:#f5d8e1; --yellow-bg:#f3e5bd; --review-bg:#e7daf4;
+}
+:root[data-theme="darkest"] {
+  color-scheme: dark;
+  --base:#050807; --surface:#090e0c; --surface-2:#0e1813; --raised:#192b21; --line:#344b3e;
+  --text:#f1f7f2; --muted:#b9ccc1; --quiet:#a1b8aa; --accent:#f7cd69; --accent-text:#231704;
+  --cyan:#8ce4e5; --violet:#d3bafa; --green:#90dfb3; --blue:#b1ccff; --orange:#f7c28a;
+  --brand-start:#0a1a11; --brand-end:#080f1e; --brand-line:#79612c;
+  --red:#ffa4b5; --yellow:#ffdb8c; --red-bg:#4d2130; --yellow-bg:#332713; --review-bg:#2e2245;
+}
 * { box-sizing:border-box }
 [hidden] { display:none!important }
 html,body { margin:0; min-height:100%; background:var(--base); color:var(--text); font:14px var(--font) }
@@ -42,6 +58,7 @@ button,.button { display:inline-flex; align-items:center; justify-content:center
 .brand small { display:block; margin-top:2px; color:var(--muted); font:9px var(--mono); letter-spacing:.11em }
 .brand-accent { color:var(--accent) }
 .header-actions,.tools,.alert-controls,.dialog-actions,.input-row { display:flex; align-items:center; gap:8px }
+.theme-picker { max-width:115px; padding:6px; font-size:12px }
 .live-pill { display:inline-flex; align-items:center; gap:7px; color:var(--muted); background:var(--base); border:1px solid var(--line); border-radius:99px; padding:5px 9px; font:11px var(--mono); white-space:nowrap }
 .live-pill i { background:var(--quiet); border-radius:50%; width:7px; height:7px }
 .live-pill.is-live { color:var(--green) }
@@ -96,6 +113,7 @@ h2 { font-size:15px; letter-spacing:-.02em }
 .panel-arrange:disabled { display:none }
 .stream-meta { display:flex; align-items:center; gap:7px; padding:0 10px 7px; border-bottom:1px solid var(--line); background:var(--surface-2); color:var(--muted); font:10px var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
 .stream-meta .dot { color:var(--panel-accent); font-size:13px }
+.stream-coverage { padding:4px 10px; border-bottom:1px solid var(--line); background:var(--surface); color:var(--muted); font-size:11px; line-height:1.35 }
 .stream-list { position:relative; flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:var(--line) transparent }
 .stream-list .record { display:grid; grid-template-columns:36px 17px minmax(0,1fr); align-items:baseline; width:100%; text-align:left; border:0; border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent); border-radius:0; white-space:normal; gap:5px; padding:6px 10px; min-height:27px; font:12px/1.4 var(--mono); font-weight:400 }
 .stream-list .record:hover,.alert-record:hover { background:var(--raised) }
@@ -215,6 +233,7 @@ dialog::backdrop { background:#050910a8 }
   .brand small { font-size:8px; letter-spacing:.04em }
   .header-actions { gap:5px }
   .header-actions .button { padding:6px 7px; font-size:11px }
+  .theme-picker { max-width:91px; font-size:11px }
   .live-pill { display:none }
   .section-nav { gap:11px }
   .section-nav button { font-size:11px }
