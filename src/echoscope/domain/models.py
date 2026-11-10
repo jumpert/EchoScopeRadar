@@ -13,6 +13,10 @@ class Kind(StrEnum):
     LIVE_CHAT = "LIVE_CHAT"
     FEED_ENTRY = "FEED_ENTRY"
     NEWS_ARTICLE = "NEWS_ARTICLE"
+    YOUTUBE_VIDEO = "YOUTUBE_VIDEO"
+    YOUTUBE_LIVE = "YOUTUBE_LIVE"
+    FORUM_POST = "FORUM_POST"
+    PRESS_COMMENT = "PRESS_COMMENT"
 
 
 class State(StrEnum):
@@ -69,6 +73,12 @@ class Match:
     rule_revision: str
     severity: Severity
     priority: int
+    method: str = "exact"
+    canonical: str | None = None
+
+    @property
+    def confirmed(self) -> bool:
+        return self.method != "review"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +100,23 @@ class HistoryQuery:
     after: int | None = None
     matches_only: bool = False
     kind: Kind | None = None
+    category: str | None = None
+    review_only: bool = False
+
+
+def category(kind: Kind, origin: str) -> str:
+    if kind == Kind.COMMENT:
+        return "youtube" if origin == "youtube:comment" else "press"
+    return {
+        Kind.NEWS_ARTICLE: "news",
+        Kind.FEED_ENTRY: "news",
+        Kind.LIVE_CHAT: "live",
+        Kind.YOUTUBE_LIVE: "live",
+        Kind.YOUTUBE_VIDEO: "youtube",
+        Kind.FORUM_POST: "forum",
+        Kind.PRESS_COMMENT: "press",
+        Kind.REVIEW: "press",
+    }[kind]
 
 
 @dataclass(frozen=True, slots=True)

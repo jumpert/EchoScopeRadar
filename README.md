@@ -2,15 +2,15 @@
 
 Centro de monitoreo en terminal para comentarios, reseñas, feeds y chats de directos. Cada panel muestra los mensajes recibidos, incluidas las capturas sin coincidencias. Las reglas resaltan términos en el texto original y agrupan sus apariciones por alerta.
 
-## Versión 0.2.0 · Ventana de administración
+## Versión 0.3.0 · Ventana de administración
 
-En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa y YouTube. Abrí **Probar EchoScope Radar.cmd** para practicar con datos simulados. La ventana ofrece formularios para agregar fuentes, editar el tema y cargar la clave de YouTube durante la sesión. Conserva su historial en una base propia.
+En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa, YouTube y foros autorizados. Abrí **Probar EchoScope Radar.cmd** para practicar con datos simulados. La ventana ofrece pestañas por tipo de resultado, tema claro u oscuro, formularios para agregar fuentes y carga de la clave de YouTube durante la sesión. El seguimiento se inicia al abrir la ventana normal y continúa mientras esté minimizada.
 
 - [Guía para personal administrativo](docs/uso-administrativo.md)
 - [Pruebas y notas de prensa de Uruguay](docs/fuentes-uruguay.md)
 - [Historial de versiones](CHANGELOG.md)
 
-Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`. Si preferís ejecutar desde código fuente, usá `uv sync --locked --extra youtube` y `uv run --no-sync echoscope-desktop`.
+Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/0.3.0/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`. Si preferís ejecutar desde código fuente, usá `uv sync --locked --extra youtube` y `uv run --no-sync echoscope-desktop`.
 
 El modo de terminal y los comandos de las secciones siguientes sirven para operación técnica.
 

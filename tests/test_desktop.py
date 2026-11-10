@@ -1,3 +1,4 @@
+import gc
 import sys
 import time
 
@@ -27,6 +28,14 @@ def test_administrator_can_start_practice_and_open_a_message(tmp_path):
 
     try:
         wait_until(lambda: app.config is not None)
+        assert len(app.category_tabs.tabs()) == 6
+        app.category_tabs.select(5)
+        root.update()
+        assert app.query.category == "forum"
+        app.category_tabs.select(0)
+        app.theme_choice.set("Oscuro")
+        app._theme_changed()
+        assert app.body.cget("background") == "#1e2835"
         app.run_button.invoke()
         wait_until(lambda: bool(app.result_tree.get_children()))
         identifier = app.result_tree.get_children()[0]
@@ -44,3 +53,5 @@ def test_administrator_can_start_practice_and_open_a_message(tmp_path):
             except tk.TclError:
                 break
             time.sleep(0.02)
+        app = root = wait_until = None
+        gc.collect()

@@ -1,5 +1,14 @@
 # Historial de versiones
 
+## 0.3.0
+
+- Pestañas en la ventana principal para Noticias, Comentarios de prensa, YouTube, Directos y Foros. Tema claro u oscuro guardado por perfil local.
+- Seguimiento automático al abrir el escritorio. Continúa minimizado y termina al cerrar la ventana.
+- Perfil inicial con prensa uruguaya y canales seleccionados de Ejército del Uruguay y VTV Noticias. Descubre videos, directos y feeds públicos de comentarios anunciados por notas pertinentes.
+- Formulario para incorporar RSS/Atom autorizados de foros, canales, notas, videos y directos.
+- Detección de sustituciones, separación de letras y alias aprobados. Las variantes aproximadas quedan disponibles en Para revisar y no generan alertas automáticas.
+- Migración SQLite que conserva el historial existente y diferencia coincidencias confirmadas y aproximadas.
+
 ## 0.2.0 · 2026-11-09
 
 - Ventana de escritorio para operar sin terminal, con una base separada para practicar.

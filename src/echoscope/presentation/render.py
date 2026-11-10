@@ -32,9 +32,18 @@ def highlighted(observation: Observation, *, single_line=False) -> Text:
     result = Text(content)
     for match in sorted(
         observation.matches,
-        key=lambda item: (STYLES[item.severity][0], item.priority, item.end - item.start),
+        key=lambda item: (
+            item.confirmed,
+            STYLES[item.severity][0],
+            item.priority,
+            item.end - item.start,
+        ),
     ):
-        result.stylize(STYLES[match.severity][1], match.start, match.end)
+        result.stylize(
+            STYLES[match.severity][1] if match.confirmed else "underline #b799f0",
+            match.start,
+            match.end,
+        )
     return result
 
 
@@ -57,6 +66,14 @@ def display(observation: Observation, *, details=False) -> Text:
     )
     result.append("\n")
     result.append_text(highlighted(observation))
+    if details:
+        variants = dict.fromkeys(
+            f"{'Para revisar: ' if not match.confirmed else ''}{line(match.term)} → {line(match.canonical)}"
+            for match in observation.matches
+            if match.canonical
+        )
+        if variants:
+            result.append("\n" + " · ".join(variants), style="dim")
     if details and message.url:
         result.append(f"\n{line(message.url)}", style="cyan")
     return result

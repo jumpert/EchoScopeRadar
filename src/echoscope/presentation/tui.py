@@ -349,7 +349,9 @@ class RadarConsole(App):
 
     def _alert(self, row):
         matches = sorted(
-            row.observation.matches, key=lambda match: STYLES[match.severity][0], reverse=True
+            (match for match in row.observation.matches if match.confirmed),
+            key=lambda match: STYLES[match.severity][0],
+            reverse=True,
         )
         text = Text(LABELS[matches[0].severity], style=STYLES[matches[0].severity][1])
         terms = " · ".join(dict.fromkeys(line(match.term) for match in matches))
@@ -369,7 +371,7 @@ class RadarConsole(App):
         row = next((item for item in rows if str(item.id) == event.option.id), None)
         if row:
             text = display(row.observation, details=True)
-            for match in row.observation.matches:
+            for match in (item for item in row.observation.matches if item.confirmed):
                 text.append(
                     f"\n{LABELS[match.severity]} · {line(match.rule_id)} · {line(match.term)}"
                 )

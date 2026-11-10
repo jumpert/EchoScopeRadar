@@ -1,31 +1,60 @@
 version: 1
+desktop_profile: 1
 sources:
   - id: telenoche
-    type: syndication
+    type: press_feed
     label: Telenoche · Nacionales
     params: {url: 'https://www.telenoche.com.uy/rss/pages/nacionales.xml', kind: NEWS_ARTICLE}
   - id: subrayado
-    type: syndication
+    type: press_feed
     label: Subrayado · Nacional
     params: {url: 'https://www.subrayado.com.uy/rss/pages/nacional.xml', kind: NEWS_ARTICLE}
   - id: montevideo-portal
-    type: syndication
+    type: press_feed
     label: Montevideo Portal · Noticias
     params: {url: 'https://www.montevideo.com.uy/anxml.aspx?59', kind: NEWS_ARTICLE}
   - id: el-observador
-    type: syndication
+    type: press_feed
     label: El Observador · Nacional
     params: {url: 'https://www.elobservador.com.uy/rss/pages/nacional.xml', kind: NEWS_ARTICLE}
+  - id: ejercito-youtube
+    type: youtube_channel
+    label: Ejército del Uruguay · Videos
+    params: {channel: UCeeEsGE06kae6DF-yOGT9Tw}
+    credential: {kind: api_key, env: ECHOSCOPE_YOUTUBE_KEY}
+    retention_days: 7
+  - id: vtv-youtube
+    type: youtube_channel
+    label: VTV Noticias · Videos
+    params: {channel: UCdW5hWEhQqexGEApXjBqQrQ}
+    credential: {kind: api_key, env: ECHOSCOPE_YOUTUBE_KEY}
+    retention_days: 7
+  - id: ejercito-directos
+    type: youtube_channel_live
+    label: Ejército del Uruguay · Directos
+    params: {channel: UCeeEsGE06kae6DF-yOGT9Tw}
+    credential: {kind: api_key, env: ECHOSCOPE_YOUTUBE_KEY}
+  - id: vtv-directos
+    type: youtube_channel_live
+    label: VTV Noticias · Directos
+    params: {channel: UCdW5hWEhQqexGEApXjBqQrQ}
+    credential: {kind: api_key, env: ECHOSCOPE_YOUTUBE_KEY}
 jobs:
   - {id: telenoche, source: telenoche, interval_s: 900, rule_set: defensa, relevant_only: true}
   - {id: subrayado, source: subrayado, interval_s: 900, rule_set: defensa, relevant_only: true}
   - {id: montevideo-portal, source: montevideo-portal, interval_s: 900, rule_set: defensa, relevant_only: true}
   - {id: el-observador, source: el-observador, interval_s: 900, rule_set: defensa, relevant_only: true}
+  - {id: ejercito-youtube, source: ejercito-youtube, interval_s: 1800, rule_set: defensa}
+  - {id: vtv-youtube, source: vtv-youtube, interval_s: 1800, rule_set: defensa}
+  - {id: ejercito-directos, source: ejercito-directos, interval_s: 3600, rule_set: defensa}
+  - {id: vtv-directos, source: vtv-directos, interval_s: 3600, rule_set: defensa}
 rule_sets:
   defensa:
-    - {id: mdn, phrase: Ministerio de Defensa, severity: important}
-    - {id: ejercito-nacional, phrase: Ejército Nacional, severity: important}
-    - {id: ejercito, phrase: Ejército}
-    - {id: fuerzas-armadas, phrase: Fuerzas Armadas}
-    - {id: esmade, phrase: Estado Mayor de la Defensa}
-    - {id: ministra, phrase: Sandra Lazo}
+    - {id: mdn, phrase: Ministerio de Defensa, severity: important, detect_variants: true}
+    - {id: ejercito-nacional, phrase: Ejército Nacional, severity: important, detect_variants: true}
+    - {id: ejercito, phrase: Ejército, detect_variants: true}
+    - {id: fuerzas-armadas, phrase: Fuerzas Armadas, detect_variants: true}
+    - {id: esmade, phrase: Estado Mayor de la Defensa, detect_variants: true}
+    - {id: ministra, phrase: Sandra Lazo, detect_variants: true}
+    - {id: defensa, phrase: defensa, detect_variants: true}
+    - {id: soldado, phrase: soldado, detect_variants: true}

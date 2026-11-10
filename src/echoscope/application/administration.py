@@ -7,6 +7,7 @@ from uuid import uuid4
 from echoscope.bootstrap import registry
 from echoscope.connectors.comment_feed import discover_comment_feed
 from echoscope.connectors.syndication import public_url
+from echoscope.connectors.youtube_channel import channel_reference
 from echoscope.connectors.youtube_comments import find_videos, video_id
 from echoscope.storage.sqlite import Store
 
@@ -17,11 +18,63 @@ from .ports import AuthRequired, JobCommand
 YOUTUBE_KEY = "ECHOSCOPE_YOUTUBE_KEY"
 RULE_SET = "defensa"
 SOURCE_TYPES = {
-    "Noticias de un sitio (RSS)": ("syndication", "NEWS_ARTICLE"),
-    "Comentarios de un sitio (RSS)": ("syndication", "COMMENT"),
+    "Noticias de un sitio (RSS)": ("press_feed", "NEWS_ARTICLE"),
+    "Comentarios de un sitio (RSS)": ("syndication", "PRESS_COMMENT"),
+    "Foro o comunidad (RSS/Atom)": ("syndication", "FORUM_POST"),
     "Comentarios de un video de YouTube": ("youtube_comments", "COMMENT"),
     "Chat de un directo de YouTube": ("youtube_live", "LIVE_CHAT"),
+    "Canal de YouTube · videos automáticos": ("youtube_channel", "YOUTUBE_VIDEO"),
+    "Canal de YouTube · directos automáticos": ("youtube_channel_live", "LIVE_CHAT"),
 }
+RSS_TYPES = {"syndication", "press_feed"}
+CHANNEL_TYPES = {"youtube_channel", "youtube_channel_live"}
+
+
+def _example(filename):
+    with as_file(files("echoscope").joinpath("examples", filename)) as path:
+        return read_config(path)
+
+
+def upgrade_desktop_profile(config):
+    if config.desktop_profile:
+        return config
+    preset = _example("defensa-uruguay.yaml")
+    by_id = {item.id: item for item in preset.sources}
+    managed = {
+        item.id
+        for item in config.sources
+        if item.id in by_id
+        and item.type == "syndication"
+        and item.params.get("kind") == "NEWS_ARTICLE"
+        and item.params.get("url") == by_id[item.id].params.get("url")
+    }
+    sources = [
+        item.model_copy(update={"type": "press_feed"}) if item.id in managed else item
+        for item in config.sources
+    ]
+    jobs = list(config.jobs)
+    rule_sets = {
+        name: [item.model_copy(update={"detect_variants": True}) for item in rules]
+        for name, rules in config.rule_sets.items()
+    }
+    if managed and RULE_SET in rule_sets:
+        known = {item.id for item in (*sources, *jobs)}
+        for source, job in zip(preset.sources, preset.jobs):
+            if source.type in CHANNEL_TYPES and source.id not in known:
+                sources.append(source)
+                jobs.append(job)
+        terms = {item.phrase.casefold() for item in rule_sets[RULE_SET]}
+        ids = {item.id for item in rule_sets[RULE_SET]}
+        rule_sets[RULE_SET] += [
+            item
+            for item in preset.rule_sets[RULE_SET]
+            if item.id in {"defensa", "soldado"}
+            and item.id not in ids
+            and item.phrase.casefold() not in terms
+        ]
+    return config.model_copy(
+        update={"desktop_profile": 1, "sources": sources, "jobs": jobs, "rule_sets": rule_sets}
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,11 +92,16 @@ class SourceForm:
         label = self.label.strip()
         if not label:
             raise ValueError("Escribí un nombre corto para reconocer esta fuente.")
-        if not 1 <= self.minutes <= 1440 or connector == "youtube_comments" and self.minutes < 5:
-            raise ValueError(
-                "Elegí un intervalo entre 1 y 1440 minutos (mínimo 5 para comentarios de YouTube)."
-            )
-        if connector == "syndication":
+        minimum = (
+            30
+            if connector == "youtube_channel_live"
+            else 5
+            if connector in {"youtube_comments", "youtube_channel"}
+            else 1
+        )
+        if not minimum <= self.minutes <= 1440:
+            raise ValueError(f"Elegí un intervalo entre {minimum} y 1440 minutos para esta fuente.")
+        if connector in RSS_TYPES:
             try:
                 endpoint = public_url(self.address.strip())
             except ValueError:
@@ -56,15 +114,18 @@ class SourceForm:
                 if self.token_env.strip()
                 else None
             )
+        elif connector in CHANNEL_TYPES:
+            params = {"channel": channel_reference(self.address)}
+            credential = Credential(kind="api_key", env=YOUTUBE_KEY)
         else:
             params = {"video_id": video_id(self.address)}
             credential = Credential(kind="api_key", env=YOUTUBE_KEY)
         if previous and previous.type == connector:
             params = previous.params | params
-            if connector != "syndication" and previous.credential:
+            if connector not in RSS_TYPES and previous.credential:
                 credential = previous.credential
         retention = previous.retention_days if previous else 30
-        if connector == "youtube_comments":
+        if connector in {"youtube_comments", "youtube_channel"}:
             retention = min(retention, 7)
         source = Source(
             id=identifier,
@@ -103,9 +164,30 @@ class Administration:
             try:
                 config = await self.store.configuration()
                 if config is None:
-                    filename = "demo.yaml" if self.practice else "defensa-uruguay.yaml"
-                    with as_file(files("echoscope").joinpath("examples", filename)) as path:
-                        config = read_config(path)
+                    config = _example("demo.yaml" if self.practice else "defensa-uruguay.yaml")
+                    validate_config(config, self.connectors)
+                    await self.store.configure(config)
+                elif not config.desktop_profile:
+                    if self.practice:
+                        rules = config.rule_sets.get("avisos", [])
+                        keys = {rule.id for rule in rules}
+                        terms = {rule.phrase.casefold() for rule in rules}
+                        additions = [
+                            rule
+                            for rule in _example("demo.yaml").rule_sets["avisos"]
+                            if rule.detect_variants
+                            and rule.id not in keys
+                            and rule.phrase.casefold() not in terms
+                        ]
+                        config = config.model_copy(
+                            update={
+                                "desktop_profile": 1,
+                                "rule_sets": config.rule_sets | {"avisos": [*rules, *additions]},
+                            }
+                        )
+                    else:
+                        config = upgrade_desktop_profile(config)
+                    config = Configuration.model_validate(config.model_dump())
                     validate_config(config, self.connectors)
                     await self.store.configure(config)
             except BaseException:
@@ -188,11 +270,11 @@ class Administration:
             token_name = f"ECHOSCOPE_FEED_{identifier.replace('-', '_').upper()}"
             if (
                 previous
-                and previous.type == "syndication"
+                and previous.type in RSS_TYPES
                 and form.address.strip() != previous.params.get("url")
             ):
                 form = replace(form, token_env="")
-            if token and SOURCE_TYPES[form.type_label][0] == "syndication":
+            if token and SOURCE_TYPES[form.type_label][0] in RSS_TYPES:
                 if (
                     not token.isascii()
                     or not token.isprintable()
@@ -206,7 +288,7 @@ class Administration:
             sources = [item for item in config.sources if item.id != source.id] + [source]
             jobs = [item for item in config.jobs if item.id != job.id] + [job]
             old_token = os.environ.get(token_name)
-            if token and source.type == "syndication":
+            if token and source.type in RSS_TYPES:
                 os.environ[token_name] = token
             try:
                 return await self._apply(
@@ -236,14 +318,33 @@ class Administration:
             config = await self.store.configuration()
             name = next(iter(config.rule_sets), RULE_SET)
             prior = {rule.phrase.casefold(): rule for rule in config.rule_sets.get(name, [])}
-            unique = {
-                phrase.strip().casefold(): phrase.strip() for phrase in phrases if phrase.strip()
-            }
+            unique = {}
+            for line in phrases:
+                if not line.strip():
+                    continue
+                phrase, *aliases = (part.strip() for part in line.split("|"))
+                if not phrase:
+                    raise ValueError("Escribí el término principal antes de la barra vertical.")
+                key = phrase.casefold()
+                if key not in unique:
+                    unique[key] = phrase, []
+                known = {item.casefold() for item in unique[key][1]}
+                for alias in aliases:
+                    if alias and alias.casefold() not in known | {key}:
+                        unique[key][1].append(alias)
+                        known.add(alias.casefold())
             if not unique:
                 raise ValueError("Escribí al menos una palabra o frase para el tema.")
             rules = [
-                prior.get(key) or RuleSpec(id=f"regla-{uuid4().hex[:12]}", phrase=phrase)
-                for key, phrase in unique.items()
+                RuleSpec.model_validate(
+                    (
+                        prior[key].model_dump()
+                        if key in prior
+                        else {"id": f"regla-{uuid4().hex[:12]}"}
+                    )
+                    | {"phrase": phrase, "aliases": aliases, "detect_variants": True}
+                )
+                for key, (phrase, aliases) in unique.items()
             ]
             return await self._apply(
                 config.model_copy(update={"rule_sets": config.rule_sets | {name: rules}})
@@ -272,6 +373,14 @@ class Administration:
 
     async def detect_comments(self, url):
         return await discover_comment_feed(url.strip())
+
+    async def theme(self):
+        return await self.store.desktop_setting("theme") or "light"
+
+    async def set_theme(self, name):
+        if name not in {"light", "dark"}:
+            raise ValueError("Elegí tema claro u oscuro.")
+        await self.store.set_desktop_setting("theme", name)
 
     async def probe(self, job_id):
         async with self.guard:

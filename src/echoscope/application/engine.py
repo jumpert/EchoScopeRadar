@@ -7,7 +7,16 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Protocol
 
-from echoscope.domain.models import Availability, HistoryQuery, Observation, Result, State, utcnow
+from echoscope.domain.models import (
+    Availability,
+    HistoryQuery,
+    Kind,
+    Observation,
+    Result,
+    State,
+    category,
+    utcnow,
+)
 from echoscope.domain.rules import evaluate
 
 from .config import Configuration
@@ -262,7 +271,12 @@ class Radar:
         retries, received, reset_cursor = 0, 0, False
         while self._active(key):
             snapshot = self.jobs[key]
-            request = Request(snapshot.source, snapshot.checkpoint, snapshot.job.timeout_s)
+            request = Request(
+                snapshot.source,
+                snapshot.checkpoint,
+                snapshot.job.timeout_s,
+                self.rules[snapshot.job.rule_set],
+            )
             method = connector.poll if definition.mode == "poll" else connector.stream
             try:
                 async with aclosing(method(request)) as iterator:
@@ -333,13 +347,25 @@ class Radar:
 
     async def _batch(self, key, execution, definition, batch, received_at):
         rules = self.rules[self.jobs[key].job.rule_set]
-        observations = await asyncio.to_thread(
-            lambda: tuple(Observation(item, evaluate(item.text, rules)) for item in batch.messages)
-        )
+
+        def evaluate_batch():
+            matches_by_text = {}
+            observations = []
+            for item in batch.messages:
+                if item.text not in matches_by_text:
+                    matches_by_text[item.text] = evaluate(item.text, rules)
+                observations.append(Observation(item, matches_by_text[item.text]))
+            return tuple(observations)
+
+        observations = await asyncio.to_thread(evaluate_batch)
         async with self.controls:
             current = self.jobs[key]
             if current.job.relevant_only:
-                observations = tuple(item for item in observations if item.matches)
+                observations = tuple(
+                    item
+                    for item in observations
+                    if item.matches or item.message.kind == Kind.PRESS_COMMENT
+                )
             snapshot = replace(
                 current,
                 checkpoint=batch.checkpoint,
@@ -504,11 +530,24 @@ class Radar:
                     and (
                         query.severity is None
                         or any(
-                            match.severity == query.severity for match in item.observation.matches
+                            match.confirmed and match.severity == query.severity
+                            for match in item.observation.matches
                         )
                     )
-                    and (not query.matches_only or bool(item.observation.matches))
+                    and (
+                        not query.matches_only
+                        or any(match.confirmed for match in item.observation.matches)
+                    )
+                    and (
+                        not query.review_only
+                        or any(not match.confirmed for match in item.observation.matches)
+                    )
                     and (query.kind is None or item.observation.message.kind == query.kind)
+                    and (
+                        query.category is None
+                        or category(item.observation.message.kind, item.observation.message.origin)
+                        == query.category
+                    )
                     and (query.since is None or item.observation.message.captured_at >= query.since)
                     and (query.until is None or item.observation.message.captured_at <= query.until)
                     and (query.before is None or item.id > query.before)

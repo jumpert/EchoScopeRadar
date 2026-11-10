@@ -6,6 +6,7 @@ from typing import Literal, Protocol
 from pydantic import BaseModel
 
 from echoscope.domain.models import Availability, Batch, HistoryQuery, Observation, Result, State
+from echoscope.domain.rules import Rule
 
 from .config import Job, Source
 
@@ -15,6 +16,7 @@ class Request:
     source: Source
     checkpoint: str | None
     timeout_s: float
+    rules: tuple[Rule, ...] = ()
 
 
 class PollConnector(Protocol):

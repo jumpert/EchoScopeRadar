@@ -25,6 +25,7 @@ from echoscope.domain.models import (
     Result,
     Severity,
     State,
+    category,
     utcnow,
 )
 
@@ -55,6 +56,7 @@ class Store:
         self.engine = create_async_engine(URL.create("sqlite+aiosqlite", database=str(self.path)))
         self._lock = FileLock(str(self.path) + ".writer.lock", timeout=0, thread_local=False)
         self._writer = asyncio.Lock()
+        self.match_methods = True
 
         @event.listens_for(self.engine.sync_engine, "connect")
         def initialize(connection, _record):
@@ -66,6 +68,7 @@ class Store:
             connection.create_function(
                 "fold", 1, lambda value: value.casefold(), deterministic=True
             )
+            connection.create_function("radar_category", 2, category, deterministic=True)
 
     @asynccontextmanager
     async def opened(self, *, write=False):
@@ -78,10 +81,15 @@ class Store:
         try:
             if write:
                 await asyncio.to_thread(_migrate, self.path)
+                self.match_methods = True
                 async with self.engine.connect() as connection:
                     await connection.exec_driver_sql("PRAGMA journal_mode=WAL")
             elif not self.path.is_file():
                 raise ValueError("La base aún no existe. Aplicá una configuración primero.")
+            else:
+                async with self.engine.connect() as connection:
+                    columns = await connection.exec_driver_sql("PRAGMA table_info(alerts)")
+                    self.match_methods = any(row[1] == "confirmed" for row in columns)
             yield self
         finally:
             try:
@@ -125,8 +133,15 @@ class Store:
                 source = sources[job.source]
                 old = old_jobs.get(job.id)
                 old_source = old_sources.get(old.source) if old else None
-                changed = old_source is None or _source_identity(source) != _source_identity(
-                    old_source
+                press_upgrade = (
+                    old_source is not None
+                    and old_source.type == "syndication"
+                    and source.type == "press_feed"
+                    and _source_identity(source.model_copy(update={"type": "syndication"}))
+                    == _source_identity(old_source)
+                )
+                changed = old_source is None or (
+                    not press_upgrade and _source_identity(source) != _source_identity(old_source)
                 )
                 if changed:
                     await conn.execute(text("DELETE FROM runtime WHERE job=:job"), {"job": job.id})
@@ -143,6 +158,10 @@ class Store:
                         "state": state,
                     },
                 )
+                if press_upgrade:
+                    await conn.execute(
+                        text("UPDATE runtime SET checkpoint=NULL WHERE job=:job"), {"job": job.id}
+                    )
                 if old and not changed and old.interval_s != job.interval_s:
                     await conn.execute(
                         text("UPDATE runtime SET interval_s=:i,next_at=NULL WHERE job=:j"),
@@ -392,42 +411,52 @@ class Store:
                 "rule": rule,
                 "severity": items[0].severity,
                 "priority": items[0].priority,
+                "confirmed": int(any(item.confirmed for item in items)),
             }
             for (observation, rule), items in matches.items()
         ]
         alerts = (
             await conn.execute(
-                text("""INSERT OR IGNORE INTO alerts(observation,rule,severity,priority)
-            SELECT value->>'observation',value->>'rule',value->>'severity',value->>'priority'
-            FROM json_each(:payload) RETURNING id,observation,rule"""),
+                text("""INSERT OR IGNORE INTO alerts(observation,rule,severity,priority,confirmed)
+            SELECT value->>'observation',value->>'rule',value->>'severity',value->>'priority',value->>'confirmed'
+            FROM json_each(:payload) RETURNING id,observation,rule,confirmed"""),
                 {"payload": json.dumps(payload)},
             )
         ).all()
         if not alerts:
             return
         await conn.execute(
-            text("INSERT INTO match_occurrences VALUES(:alert,:start,:end,:term)"),
+            text("INSERT INTO match_occurrences VALUES(:alert,:start,:end,:term,:method)"),
             [
-                {"alert": alert, "start": match.start, "end": match.end, "term": match.term}
-                for alert, observation, rule in alerts
+                {
+                    "alert": alert,
+                    "start": match.start,
+                    "end": match.end,
+                    "term": match.term,
+                    "method": match.method,
+                }
+                for alert, observation, rule, _ in alerts
                 for match in matches[observation, rule]
             ],
         )
         now = _iso(utcnow())
-        await conn.execute(
-            text("""INSERT INTO events(at,kind,job,execution,detail,observation)
-            VALUES(:at,'AlertRaised',:job,:execution,:detail,:observation)"""),
-            [
-                {
-                    "at": now,
-                    "job": job_id,
-                    "execution": execution_id,
-                    "detail": str(alert),
-                    "observation": observation,
-                }
-                for alert, observation, _ in alerts
-            ],
-        )
+        events = [
+            {
+                "at": now,
+                "job": job_id,
+                "execution": execution_id,
+                "detail": str(alert),
+                "observation": observation,
+            }
+            for alert, observation, _, confirmed in alerts
+            if confirmed
+        ]
+        if events:
+            await conn.execute(
+                text("""INSERT INTO events(at,kind,job,execution,detail,observation)
+                VALUES(:at,'AlertRaised',:job,:execution,:detail,:observation)"""),
+                events,
+            )
 
     async def _event(self, conn, kind, job, execution=None, detail=None, observation=None):
         await conn.execute(
@@ -483,8 +512,14 @@ class Store:
 
     async def messages(self, query: HistoryQuery) -> list[Result]:
         conditions = ["s.expires > :now"]
+        confirmed = " AND a.confirmed=1" if self.match_methods else ""
         if query.matches_only:
-            conditions.append("EXISTS(SELECT 1 FROM alerts a WHERE a.observation=s.id)")
+            conditions.append(f"EXISTS(SELECT 1 FROM alerts a WHERE a.observation=s.id{confirmed})")
+        if query.review_only:
+            if not self.match_methods:
+                return []
+            conditions.append("""EXISTS(SELECT 1 FROM alerts a JOIN match_occurrences m ON m.alert=a.id
+                               WHERE a.observation=s.id AND m.method='review')""")
         arguments = {"now": _iso(utcnow()), "limit": min(500, max(1, query.limit))}
         for name, clause, value in (
             ("job", "s.job=:job", query.job_id),
@@ -496,7 +531,7 @@ class Store:
             ),
             (
                 "severity",
-                "EXISTS(SELECT 1 FROM alerts a WHERE a.observation=s.id AND a.severity=:severity)",
+                f"EXISTS(SELECT 1 FROM alerts a WHERE a.observation=s.id AND a.severity=:severity{confirmed})",
                 query.severity,
             ),
             ("since", "s.captured>=:since", _iso(query.since)),
@@ -504,13 +539,20 @@ class Store:
             ("before", "s.id<:before", query.before),
             ("after", "s.id>:after", query.after),
             ("kind", "json_extract(s.metadata, '$.kind')=:kind", query.kind),
+            (
+                "category",
+                "radar_category(json_extract(s.metadata, '$.kind'),json_extract(s.metadata, '$.origin'))=:category",
+                query.category,
+            ),
         ):
             if value is not None:
                 conditions.append(clause)
                 arguments[name] = value
         order = "ASC" if query.after is not None else "DESC"
+        method = "m.method" if self.match_methods else "'exact'"
         sql = f"""SELECT s.*,v.body,(
-                    SELECT json_group_array(json_array(m.start,m.end,m.term,r.rule_id,a.rule,a.severity,a.priority))
+                    SELECT json_group_array(json_array(m.start,m.end,m.term,r.rule_id,a.rule,a.severity,a.priority,
+                        {method},CASE WHEN {method}<>'exact' THEN json_extract(r.definition, '$.phrase') END))
                     FROM alerts a JOIN rule_versions r ON r.revision=a.rule
                     JOIN match_occurrences m ON m.alert=a.id WHERE a.observation=s.id
                   ) AS matches
@@ -528,8 +570,18 @@ class Store:
                 json.loads(row.matches), key=lambda value: (value[0], value[1], value[3])
             )
             matches = tuple(
-                Match(start, end, term, rule_id, revision, Severity(severity), priority)
-                for start, end, term, rule_id, revision, severity, priority in occurrences
+                Match(
+                    start,
+                    end,
+                    term,
+                    rule_id,
+                    revision,
+                    Severity(severity),
+                    priority,
+                    method,
+                    canonical if method != "exact" else None,
+                )
+                for start, end, term, rule_id, revision, severity, priority, method, canonical in occurrences
             )
             results.append(
                 Result(
@@ -540,6 +592,20 @@ class Store:
                 )
             )
         return results
+
+    async def desktop_setting(self, key):
+        async with self.reader() as conn:
+            return await conn.scalar(
+                text("SELECT value FROM desktop_settings WHERE key=:key"), {"key": key}
+            )
+
+    async def set_desktop_setting(self, key, value):
+        async with self.transaction() as conn:
+            await conn.execute(
+                text("""INSERT INTO desktop_settings VALUES(:key,:value)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value"""),
+                {"key": key, "value": value},
+            )
 
     async def purge(self, source=None):
         async with self.transaction() as conn:

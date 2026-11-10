@@ -13,6 +13,8 @@ FIXTURES = {
         "Me encantó la atención, excelente servicio.",
         "Gracias por responder.",
         "La atención al cliente fue excelente. Excelente atención.",
+        "El soldad0 habló de d e f e n s a.",
+        "Un comentario menciona al ejersito.",
     ),
     "reviews": (
         "Tuvieron una demora importante con mi compra.",

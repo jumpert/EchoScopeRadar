@@ -11,13 +11,18 @@ async def test_administrative_setup_edit_topic_and_reopen(tmp_path, monkeypatch)
     service = Administration(path)
     config = await service.open()
     try:
-        assert {source.id for source in config.sources} == {
+        assert {source.id for source in config.sources if source.type == "press_feed"} == {
             "subrayado",
             "telenoche",
             "el-observador",
             "montevideo-portal",
         }
-        assert all(job.relevant_only for job in config.jobs)
+        assert all(
+            job.relevant_only
+            for job in config.jobs
+            if job.id in {"subrayado", "telenoche", "el-observador", "montevideo-portal"}
+        )
+        assert len(config.sources) == 8
         form = SourceForm(
             "Video de prueba",
             "Comentarios de un video de YouTube",
@@ -42,14 +47,17 @@ async def test_administrative_setup_edit_topic_and_reopen(tmp_path, monkeypatch)
             source.id,
         )
         assert config.sources[-1].credential is None
-        await service.save_topic(["Ejército", "Defensa Nacional", "ejército"])
+        await service.save_topic(["Ejército | ejersito", "Defensa Nacional", "ejército"])
+        await service.set_theme("dark")
     finally:
         await service.close()
     service = Administration(path)
     config = await service.open()
     try:
-        assert len(config.sources) == 6
+        assert len(config.sources) == 10
         assert len(config.rule_sets["defensa"]) == 2
+        assert config.rule_sets["defensa"][0].aliases == ["ejersito"]
+        assert await service.theme() == "dark"
     finally:
         await service.close()
 

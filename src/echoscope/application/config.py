@@ -48,6 +48,8 @@ class RuleSpec(StrictModel):
     case_sensitive: bool = False
     accent_sensitive: bool = False
     exclusions: list[str] = Field(default_factory=list, max_length=30)
+    aliases: list[str] = Field(default_factory=list, max_length=20)
+    detect_variants: bool = False
 
     def compile(self) -> Rule:
         return Rule(
@@ -58,6 +60,8 @@ class RuleSpec(StrictModel):
             self.case_sensitive,
             self.accent_sensitive,
             tuple(self.exclusions),
+            tuple(self.aliases),
+            self.detect_variants,
         )
 
 
@@ -66,6 +70,7 @@ class Configuration(StrictModel):
     sources: list[Source] = Field(max_length=100)
     jobs: list[Job] = Field(max_length=100)
     rule_sets: dict[str, list[RuleSpec]]
+    desktop_profile: Literal[1] | None = None
 
     @model_validator(mode="after")
     def references(self):
@@ -83,9 +88,9 @@ class Configuration(StrictModel):
             if any(
                 not phrase.strip() or len(phrase) > 256
                 for rule in rules
-                for phrase in rule.exclusions
+                for phrase in (*rule.exclusions, *rule.aliases)
             ):
-                raise ValueError("Las exclusiones deben tener entre 1 y 256 caracteres")
+                raise ValueError("Las variantes y exclusiones deben tener entre 1 y 256 caracteres")
         return self
 
 

@@ -11,20 +11,44 @@ from urllib.parse import urlsplit
 from platformdirs import user_data_path
 from pydantic import ValidationError
 
-from echoscope.application.administration import SOURCE_TYPES, Administration, SourceForm
+from echoscope.application.administration import (
+    CHANNEL_TYPES,
+    RSS_TYPES,
+    SOURCE_TYPES,
+    Administration,
+    SourceForm,
+)
 from echoscope.application.ports import AuthRequired, ConnectorError, StorageUnavailable
 from echoscope.domain.models import HistoryQuery, Kind, State
 
+from .palette import paint
 from .render import safe
 
-KINDS = {
+TABS = {
     "Todos": None,
-    "Notas": Kind.NEWS_ARTICLE,
-    "Comentarios": Kind.COMMENT,
-    "Chats en vivo": Kind.LIVE_CHAT,
-    "Reseñas": Kind.REVIEW,
+    "Noticias": "news",
+    "Comentarios de prensa": "press",
+    "YouTube": "youtube",
+    "Directos": "live",
+    "Foros": "forum",
 }
-KIND_LABELS = {kind: label for label, kind in KINDS.items() if kind is not None}
+KIND_LABELS = {
+    Kind.NEWS_ARTICLE: "Nota",
+    Kind.COMMENT: "Comentario",
+    Kind.PRESS_COMMENT: "Comentario",
+    Kind.LIVE_CHAT: "Chat en vivo",
+    Kind.REVIEW: "Reseña",
+    Kind.YOUTUBE_VIDEO: "Video",
+    Kind.FORUM_POST: "Foro",
+    Kind.YOUTUBE_LIVE: "Directo",
+}
+DEFAULT_FORMS = {
+    "news": "Noticias de un sitio (RSS)",
+    "press": "Comentarios de un sitio (RSS)",
+    "forum": "Foro o comunidad (RSS/Atom)",
+    "youtube": "Canal de YouTube · videos automáticos",
+    "live": "Canal de YouTube · directos automáticos",
+}
 STATES = {
     State.SCHEDULED: "Programada",
     State.RUNNING: "Consultando",
@@ -56,17 +80,35 @@ def user_error(error):
 class Background:
     def __init__(self):
         self.loop = asyncio.new_event_loop()
-        threading.Thread(target=self.loop.run_forever, daemon=True).start()
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+
+    def _run(self):
+        asyncio.set_event_loop(self.loop)
+        try:
+            self.loop.run_forever()
+        finally:
+            remaining = asyncio.all_tasks(self.loop)
+            for task in remaining:
+                task.cancel()
+            if remaining:
+                self.loop.run_until_complete(asyncio.gather(*remaining, return_exceptions=True))
+            self.loop.run_until_complete(self.loop.shutdown_asyncgens())
+            self.loop.run_until_complete(self.loop.shutdown_default_executor(timeout=1))
+            self.loop.close()
 
     def submit(self, action):
         return asyncio.run_coroutine_threadsafe(action, self.loop)
 
     def stop(self):
         self.loop.call_soon_threadsafe(self.loop.stop)
+        self.thread.join(timeout=3)
 
 
 class SourceDialog(tk.Toplevel):
-    def __init__(self, parent, save, discover, source=None, job=None, suggestion=None):
+    def __init__(
+        self, parent, save, discover, source=None, job=None, suggestion=None, preferred=None
+    ):
         super().__init__(parent)
         self.transient(parent)
         self.title("Editar fuente" if job else "Agregar fuente")
@@ -74,13 +116,12 @@ class SourceDialog(tk.Toplevel):
         self.grab_set()
         current_kind = (source.type, source.params.get("kind", "NEWS_ARTICLE")) if source else None
         if source and source.type.startswith("youtube_"):
-            current_kind = (
-                source.type,
-                "COMMENT" if source.type == "youtube_comments" else "LIVE_CHAT",
-            )
+            current_kind = next(spec for spec in SOURCE_TYPES.values() if spec[0] == source.type)
+        if current_kind == ("syndication", "COMMENT"):
+            current_kind = "syndication", "PRESS_COMMENT"
         initial_type = next(
             (name for name, spec in SOURCE_TYPES.items() if spec == current_kind),
-            next(iter(SOURCE_TYPES)),
+            preferred or next(iter(SOURCE_TYPES)),
         )
         if suggestion:
             initial_type = "Comentarios de un video de YouTube"
@@ -92,14 +133,25 @@ class SourceDialog(tk.Toplevel):
             ),
             "type": tk.StringVar(value=initial_type),
             "address": tk.StringVar(
-                value=(source.params.get("url") or source.params.get("video_id") or "")
+                value=(
+                    source.params.get("url")
+                    or source.params.get("video_id")
+                    or source.params.get("channel")
+                    or ""
+                )
                 if source
                 else (suggestion.id if suggestion else "")
             ),
-            "minutes": tk.StringVar(value=str(max(1, int(job.interval_s / 60))) if job else "15"),
+            "minutes": tk.StringVar(
+                value=str(max(1, int(job.interval_s / 60)))
+                if job
+                else ("60" if SOURCE_TYPES[initial_type][0] == "youtube_channel_live" else "15")
+            ),
             "enabled": tk.BooleanVar(value=job.enabled if job else True),
             "relevant": tk.BooleanVar(
-                value=job.relevant_only if job else initial_type == next(iter(SOURCE_TYPES))
+                value=job.relevant_only
+                if job
+                else SOURCE_TYPES[initial_type][1] in {"NEWS_ARTICLE", "FORUM_POST"}
             ),
             "token": tk.StringVar(),
         }
@@ -179,21 +231,30 @@ class SourceDialog(tk.Toplevel):
 
     def _changed(self, event=None):
         connector, kind = SOURCE_TYPES[self.form["type"].get()]
-        if connector == "syndication":
-            content = "comentarios" if kind == "COMMENT" else "noticias"
+        if connector in RSS_TYPES:
+            content = {"PRESS_COMMENT": "comentarios", "FORUM_POST": "publicaciones del foro"}.get(
+                kind, "noticias"
+            )
             self.note.set(f"Enlace HTTPS al feed RSS/Atom de {content} publicado por el sitio")
             self.token_group.grid()
-            if kind == "COMMENT":
+            if kind == "PRESS_COMMENT":
                 self.note.set("Pegá el enlace del feed o pegá el de la nota y elegí Detectar feed.")
                 self.discover_button.pack(side="right", padx=(6, 0))
             else:
                 self.discover_button.pack_forget()
         else:
-            self.note.set("Enlace del video o directo de YouTube. Cargá la clave en Tema y acceso.")
+            address = (
+                "canal de YouTube o su @nombre"
+                if connector in CHANNEL_TYPES
+                else "video o directo de YouTube"
+            )
+            self.note.set(f"Enlace del {address}. Cargá la clave en Tema y acceso.")
             self.token_group.grid_remove()
             self.discover_button.pack_forget()
         if event:
-            self.form["relevant"].set(kind == "NEWS_ARTICLE")
+            self.form["relevant"].set(kind in {"NEWS_ARTICLE", "FORUM_POST"})
+            if connector == "youtube_channel_live":
+                self.form["minutes"].set("60")
 
 
 class Desktop:
@@ -209,9 +270,10 @@ class Desktop:
         self.result_signature = None
         self.source_signature = None
         self.current_url = None
-        self.kind = tk.StringVar(value="Todos")
         self.text = tk.StringVar()
-        self.match_only = tk.BooleanVar()
+        self.match_mode = tk.StringVar(value="Todos")
+        self.theme_choice = tk.StringVar(value="Claro")
+        self.match_note = tk.StringVar()
         self.status = tk.StringVar(value="Preparando el historial local…")
         self.key_status = tk.StringVar(value="Sin clave cargada")
         self.detail_title = tk.StringVar(
@@ -228,19 +290,7 @@ class Desktop:
         )
         self.root.geometry("1080x720")
         self.root.minsize(850, 600)
-        self.root.configure(background="#f1f5f9")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
-        style = ttk.Style(self.root)
-        style.theme_use("clam")
-        style.configure("TFrame", background="#f1f5f9")
-        style.configure("TLabel", background="#f1f5f9", foreground="#172438", font=("Segoe UI", 10))
-        style.configure("Title.TLabel", font=("Segoe UI", 23, "bold"), foreground="#17365b")
-        style.configure("Heading.TLabel", font=("Segoe UI", 13, "bold"))
-        style.configure("TButton", padding=(12, 7), font=("Segoe UI", 10))
-        style.configure("Primary.TButton", background="#205d9c", foreground="white")
-        style.map("Primary.TButton", background=[("active", "#164775"), ("disabled", "#687f98")])
-        style.configure("Treeview", rowheight=30, font=("Segoe UI", 10))
-        style.configure("TNotebook.Tab", padding=(16, 9), font=("Segoe UI", 10))
 
         frame = ttk.Frame(self.root, padding=18)
         frame.pack(fill="both", expand=True)
@@ -254,12 +304,21 @@ class Desktop:
             command=self.toggle,
         )
         self.run_button.pack(side="right", pady=(6, 0))
+        theme = ttk.Combobox(
+            header,
+            state="readonly",
+            width=8,
+            values=("Claro", "Oscuro"),
+            textvariable=self.theme_choice,
+        )
+        theme.pack(side="right", padx=10, pady=(6, 0))
+        theme.bind("<<ComboboxSelected>>", self._theme_changed)
         ttk.Label(header, text="EchoScope Radar", style="Title.TLabel").pack(anchor="w")
         ttk.Label(
             header,
             text="Modo de práctica · fuentes simuladas"
             if self.practice
-            else "Seguimiento de prensa y YouTube · Uruguay",
+            else "Seguimiento automático · Defensa y Ejército · Uruguay",
         ).pack(anchor="w")
 
         tabs = ttk.Notebook(frame)
@@ -269,22 +328,29 @@ class Desktop:
         tabs.add(sources, text="Fuentes")
         tabs.add(settings, text="Tema y acceso")
 
+        self.category_tabs = ttk.Notebook(results, height=2)
+        self.category_tabs.pack(fill="x", pady=(0, 9))
+        for label in TABS:
+            self.category_tabs.add(ttk.Frame(self.category_tabs, height=2), text=label)
+        self.category_tabs.bind("<<NotebookTabChanged>>", lambda _: self.apply_filter())
+
         filters = ttk.Frame(results)
         filters.pack(fill="x", pady=(0, 8))
-        selector = ttk.Combobox(
-            filters, state="readonly", width=16, values=list(KINDS), textvariable=self.kind
-        )
-        selector.pack(side="left", padx=(0, 6))
-        selector.bind("<<ComboboxSelected>>", lambda _: self.apply_filter())
         search = ttk.Entry(filters, textvariable=self.text)
         search.pack(side="left", fill="x", expand=True, padx=6)
         search.bind("<Return>", lambda _: self.apply_filter())
         ttk.Button(filters, text="Buscar en resultados", command=self.apply_filter).pack(
             side="left", padx=6
         )
-        ttk.Checkbutton(
-            filters, text="Solo coincidencias", variable=self.match_only, command=self.apply_filter
-        ).pack(side="right")
+        mode = ttk.Combobox(
+            filters,
+            state="readonly",
+            width=15,
+            values=("Todos", "Alertas", "Para revisar"),
+            textvariable=self.match_mode,
+        )
+        mode.pack(side="right")
+        mode.bind("<<ComboboxSelected>>", lambda _: self.apply_filter())
         self.result_tree = self._table(
             results, ("Hora", "Fuente", "Tipo", "Resultado"), (122, 190, 105, 450)
         )
@@ -296,6 +362,9 @@ class Desktop:
         )
         self.open_button.pack(side="right")
         ttk.Label(detail, textvariable=self.detail_title, style="Heading.TLabel").pack(anchor="w")
+        ttk.Label(results, textvariable=self.match_note, wraplength=760).pack(
+            anchor="w", pady=(3, 0)
+        )
         self.body = tk.Text(
             results,
             height=6,
@@ -307,9 +376,6 @@ class Desktop:
             state="disabled",
         )
         self.body.pack(fill="x", pady=(6, 0))
-        self.body.tag_configure("info", background="#fff1bc")
-        self.body.tag_configure("important", background="#ffe0a2")
-        self.body.tag_configure("critical", background="#ffd2d5")
 
         ttk.Label(
             sources, text="Elegí qué medios y videos querés seguir.", style="Heading.TLabel"
@@ -336,7 +402,7 @@ class Desktop:
         )
         ttk.Label(
             settings,
-            text="Una por línea. Las fuentes con filtro de tema solo guardan coincidencias.",
+            text="Una por línea. Para aprobar una variante usá: Ejército | ejersito.",
         ).pack(anchor="w", pady=(3, 6))
         self.terms = tk.Text(settings, height=7, wrap="word", font=("Segoe UI", 11))
         self.terms.pack(fill="x")
@@ -362,6 +428,7 @@ class Desktop:
             side="left", padx=(8, 0)
         )
         ttk.Label(frame, textvariable=self.status).pack(anchor="w", pady=(10, 0))
+        paint(self.root, "light", self.body, self.terms)
 
     def _table(self, parent, columns, widths):
         container = ttk.Frame(parent)
@@ -402,13 +469,28 @@ class Desktop:
         self.run_button.configure(state="normal")
         self.status.set("Elegí Iniciar seguimiento para consultar las fuentes activas.")
         self.refresh()
+        self._submit(self.service.theme(), self._restore_theme)
+        if not self.practice and not self.closing:
+            self.toggle()
+
+    def _restore_theme(self, name):
+        self.theme_choice.set("Oscuro" if name == "dark" else "Claro")
+        paint(self.root, "dark" if name == "dark" else "light", self.body, self.terms)
+
+    def _theme_changed(self, _event=None):
+        name = "dark" if self.theme_choice.get() == "Oscuro" else "light"
+        paint(self.root, name, self.body, self.terms)
+        if self.config:
+            self._submit(self.service.set_theme(name), lambda _: None)
 
     def _configured(self, config, update_terms=False):
         self.config = config
         if update_terms:
             self.terms.delete("1.0", "end")
             rules = next(iter(config.rule_sets.values()), [])
-            self.terms.insert("1.0", "\n".join(rule.phrase for rule in rules))
+            self.terms.insert(
+                "1.0", "\n".join(" | ".join((rule.phrase, *rule.aliases)) for rule in rules)
+            )
         self.source_signature = None
 
     def refresh(self):
@@ -444,14 +526,16 @@ class Desktop:
                 state += f" · {safe(snapshot.detail).lower()}"
             if snapshot.coverage_gap:
                 state += " · cobertura parcial"
-            if source.type == "youtube_live":
+            if source.type in {"youtube_live", "youtube_channel_live"}:
                 state += " · solo sesión"
-            if source.type == "syndication":
+            if source.type in RSS_TYPES:
                 kind = KIND_LABELS.get(Kind(source.params.get("kind", "FEED_ENTRY")), "Feed")
             else:
                 kind = {
                     "youtube_live": "Chat de YouTube",
                     "youtube_comments": "Comentarios de YouTube",
+                    "youtube_channel": "Videos automáticos",
+                    "youtube_channel_live": "Directos automáticos",
                 }.get(source.type, "Práctica")
             minutes = (
                 f"{snapshot.job.interval_s / 60:g} min"
@@ -475,7 +559,11 @@ class Desktop:
                     (
                         when.strftime("%d/%m %H:%M"),
                         labels.get(item.source_id, item.source_id),
-                        KIND_LABELS.get(message.kind, "Entrada"),
+                        (
+                            "Para revisar"
+                            if any(not match.confirmed for match in item.observation.matches)
+                            else KIND_LABELS.get(message.kind, "Entrada")
+                        ),
                         title,
                     ),
                 )
@@ -502,6 +590,7 @@ class Desktop:
         self.body.configure(state="normal")
         self.body.delete("1.0", "end")
         self.current_url = None
+        self.match_note.set("")
         if item:
             message = item.observation.message
             when = (message.published_at or message.captured_at).astimezone()
@@ -509,13 +598,27 @@ class Desktop:
                 f"{safe(message.author or 'Publicación')} · {when:%d/%m/%Y %H:%M}"
             )
             self.body.insert("1.0", safe(message.text))
+            variants = []
             for match in item.observation.matches:
                 self.body.tag_add(
-                    match.severity, f"1.0+{match.start} chars", f"1.0+{match.end} chars"
+                    match.severity if match.confirmed else "review",
+                    f"1.0+{match.start} chars",
+                    f"1.0+{match.end} chars",
                 )
+                if match.canonical:
+                    prefix = "" if match.confirmed else "Para revisar: "
+                    variants.append(f"{prefix}{safe(match.term)} → {safe(match.canonical)}")
+            self.match_note.set(" · ".join(list(dict.fromkeys(variants))[:5]))
             self.current_url = message.url
         else:
-            self.detail_title.set("Seleccioná un resultado para ver el texto completo.")
+            empty = (
+                "Agregá un RSS/Atom autorizado para seguir un foro."
+                if self.query.category == "forum"
+                else "Todavía no hay resultados en esta vista."
+            )
+            self.detail_title.set(
+                "Seleccioná un resultado para ver el texto completo." if self.results else empty
+            )
         self.body.configure(state="disabled")
         self.open_button.configure(state="normal" if self.current_url else "disabled")
 
@@ -554,14 +657,25 @@ class Desktop:
     def apply_filter(self):
         self.query = HistoryQuery(
             text=self.text.get().strip() or None,
-            kind=KINDS[self.kind.get()],
-            matches_only=self.match_only.get(),
+            category=self._category(),
+            matches_only=self.match_mode.get() == "Alertas",
+            review_only=self.match_mode.get() == "Para revisar",
             limit=120,
         )
 
+    def _category(self):
+        active = self.category_tabs.select()
+        return TABS[self.category_tabs.tab(active, "text")] if active else None
+
     def add_source(self, suggestion=None):
         if self.config:
-            SourceDialog(self.root, self._save_source, self._detect_comments, suggestion=suggestion)
+            SourceDialog(
+                self.root,
+                self._save_source,
+                self._detect_comments,
+                suggestion=suggestion,
+                preferred=DEFAULT_FORMS.get(self._category()),
+            )
 
     def _selected_job(self):
         selected = self.source_tree.selection()

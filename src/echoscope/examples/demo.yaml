@@ -1,4 +1,5 @@
 version: 1
+desktop_profile: 1
 sources:
   - id: comentarios
     type: sim_poll
@@ -23,3 +24,6 @@ rule_sets:
     - {id: excelente, phrase: excelente, severity: info}
     - {id: demora, phrase: demora, severity: critical}
     - {id: estado, phrase: perfecto estado, severity: info}
+    - {id: soldado, phrase: soldado, detect_variants: true}
+    - {id: defensa, phrase: defensa, detect_variants: true}
+    - {id: ejercito, phrase: Ejército, detect_variants: true}
