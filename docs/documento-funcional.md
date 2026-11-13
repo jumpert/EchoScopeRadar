@@ -1,6 +1,10 @@
 # Documento funcional de EchoScope Radar
 
-Versión 0.11.0 · 12 de noviembre de 2026
+Actualizado para 0.12.0 · 12 de noviembre de 2026
+
+Desde 0.12.0 podés elegir **Por tema** o **Cuenta propia · seguimiento permanente** en cada fuente. En la primera modalidad, prensa y canales seleccionan publicaciones por el título. En la segunda, siguen publicaciones recientes aunque el título sea diferente. En servidor, Iniciar seguimiento guarda la intención y la recupera al reiniciar, sin otro inicio de sesión. Pausar seguimiento guarda la pausa. Las ventanas iniciales de siete días y de seguimiento de treinta días se pueden ajustar por fuente en YAML mediante initial_days y follow_days; resources_per_cycle limita la rotación por ciclo.
+
+Las redes registradas con acceso pendiente conservan su URL y modalidad, y permanecen desactivadas. WordPress público y Disqus amplían los mecanismos de lectura de comentarios. Disqus requiere una clave propia en el almacén. Las vistas previas usan reglas y alertas de sesión; agregá la fuente para conservar capturas persistentes compatibles.
 
 ## Finalidad
 

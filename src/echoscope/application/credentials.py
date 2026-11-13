@@ -13,6 +13,7 @@ PROVIDERS = {
     "brave": ("Brave Search", "ECHOSCOPE_BRAVE_KEY"),
     "tavily": ("Tavily", "ECHOSCOPE_TAVILY_KEY"),
     "serper": ("Google mediante Serper", "ECHOSCOPE_SERPER_KEY"),
+    "disqus": ("Disqus · comentarios", "ECHOSCOPE_DISQUS_KEY"),
 }
 VAULT_ONLY = {
     "Redes sociales": {

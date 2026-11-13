@@ -23,3 +23,4 @@ Copy-Item -LiteralPath 'docs/servidor.md' -Destination $package
 Copy-Item -Path 'docs/documento-*.md', 'docs/auditoria-inicial.md', 'docs/informe-validacion.md' -Destination $package
 Copy-Item -LiteralPath '.env.example' -Destination $package
 Copy-Item -LiteralPath 'docs/dependency-audit.json' -Destination $package
+Copy-Item -LiteralPath 'docs/fuentes-uruguay-conexiones.md', 'docs/consulta-base-datos.md', 'docs/validacion-comentarios.md', 'deploy/echoscope.service' -Destination $package

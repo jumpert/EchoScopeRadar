@@ -253,7 +253,7 @@ class Radar:
                         current,
                         state=State.SCHEDULED,
                         next_at=next_at,
-                        detail=None if count else "SIN RESULTADOS",
+                        detail=current.detail or (None if count else "SIN RESULTADOS"),
                     )
                 if current.state in {State.PAUSED, State.DISABLED}:
                     outcome = current.state
@@ -360,7 +360,7 @@ class Radar:
         observations = await asyncio.to_thread(evaluate_batch)
         async with self.controls:
             current = self.jobs[key]
-            if current.job.relevant_only:
+            if current.job.relevant_only and current.source.tracking != "owned":
                 observations = tuple(
                     item
                     for item in observations
@@ -371,6 +371,7 @@ class Radar:
             snapshot = replace(
                 current,
                 checkpoint=batch.checkpoint,
+                detail=batch.detail or current.detail,
                 coverage_gap=current.coverage_gap or batch.coverage_gap,
                 availability=(Availability.LIVE if batch.stream_ready else current.availability)
                 if definition.mode == "stream"

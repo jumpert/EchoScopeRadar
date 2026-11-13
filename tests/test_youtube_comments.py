@@ -74,6 +74,8 @@ async def test_youtube_search_threads_and_replies_via_http(monkeypatch):
             )
         if endpoint == "commentThreads":
             assert request.query["textFormat"] == "plainText"
+            if request.query.get("pageToken") == "more":
+                return web.json_response({"items": []})
             return web.json_response(
                 {
                     "nextPageToken": "more",
@@ -129,6 +131,12 @@ async def test_youtube_search_threads_and_replies_via_http(monkeypatch):
         assert batches[0].coverage_gap
         assert calls == ["search", "videos", "commentThreads", "comments"]
         assert all(item.resource_title == "Título del video" for item in batches[0].messages)
+        assert batches[-1].checkpoint == "more"
+        resumed = [
+            batch
+            async for batch in YouTubeComments().poll(Request(source, batches[-1].checkpoint, 5))
+        ]
+        assert resumed[-1].checkpoint is None and not resumed[-1].messages
         videos = await find_videos("Defensa Uruguay", credential, live=True)
         assert videos[0].id == "01234567890"
         source.params["video_id"] = "11111111111"

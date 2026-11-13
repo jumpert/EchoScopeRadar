@@ -38,6 +38,7 @@ class ConnectorType:
     persistent: bool = True
     simulated: bool = False
     min_interval_s: float = 0
+    capabilities: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

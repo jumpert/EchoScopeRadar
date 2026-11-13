@@ -58,6 +58,7 @@ class Message:
     captured_at: datetime = field(default_factory=utcnow)
     title: str | None = None
     resource_title: str | None = None
+    parent_id: str | None = None
 
 
 def publication_title(message: Message) -> str:
@@ -82,6 +83,7 @@ class Batch:
     checkpoint: str | None
     coverage_gap: bool = False
     stream_ready: bool = True
+    detail: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

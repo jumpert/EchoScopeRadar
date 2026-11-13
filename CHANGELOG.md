@@ -1,5 +1,14 @@
 # Historial de versiones
 
+## 0.12.0
+
+- Fuentes por título relacionado y cuentas declaradas propias con seguimiento independiente del título.
+- Captura de comentarios públicos de WordPress y Disqus, con respuestas, paginación y relación con la nota original.
+- Ventanas configurables de descubrimiento y seguimiento, estados de cobertura y uso de claves Disqus en el almacén de cuenta.
+- Recuperación del seguimiento activo por cuenta al reiniciar el servidor, antes de iniciar sesión.
+- Registro de recursos sociales con acceso pendiente, guía verificada de Uruguay y consultas directas de SQLite.
+- Plantilla systemd, instrucciones de arranque Windows y diagnóstico de ubicación de base sin secretos.
+
 ## 0.11.0
 
 - Auditoría funcional y de seguridad, documentación de usuario, documento técnico con MER e informe de pruebas por sistema operativo.

@@ -224,9 +224,20 @@ def status(ctx: typer.Context, executions: bool = False):
 def doctor(
     ctx: typer.Context,
     network: Annotated[str | None, typer.Option(help="Probar una fuente configurada.")] = None,
+    storage_info: Annotated[
+        bool, typer.Option(help="Mostrar motor y ubicación efectiva sin secretos.")
+    ] = False,
 ):
     async def operation():
         store = _store(ctx)
+        if storage_info:
+            if hasattr(store, "path"):
+                typer.echo("Motor: SQLite")
+                typer.echo(f"Archivo: {store.path}")
+                typer.echo("Conexión de lectura: " + store.path.as_uri() + "?mode=ro")
+            else:
+                typer.echo("Motor: adaptador externo configurado")
+            return
         async with store.opened():
             config = await store.configuration()
             if config is None:

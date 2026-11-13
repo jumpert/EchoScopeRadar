@@ -6,6 +6,7 @@ from uuid import uuid4
 from echoscope.bootstrap import create_store, registry
 from echoscope.connectors.bluesky import BlueskyParams
 from echoscope.connectors.comment_feed import discover_comment_feed, discover_discussion_feeds
+from echoscope.connectors.pending import PLATFORMS
 from echoscope.connectors.syndication import public_url
 from echoscope.connectors.youtube_channel import channel_reference, check_access
 from echoscope.connectors.youtube_comments import find_videos, video_id
@@ -30,6 +31,12 @@ SOURCE_TYPES = {
     "Canal de YouTube · directos automáticos": ("youtube_channel_live", "LIVE_CHAT"),
 }
 RSS_TYPES = {"syndication", "press_feed"}
+SOURCE_TYPES.update(
+    {
+        f"{platform} · acceso pendiente": ("pending_social", "SOCIAL_COMMENT")
+        for platform in PLATFORMS
+    }
+)
 CHANNEL_TYPES = {"youtube_channel", "youtube_channel_live"}
 
 
@@ -116,6 +123,9 @@ class SourceForm:
     relevant_only: bool = False
     token_env: str = ""
     resource_url: str | None = None
+    tracking: str = "topic"
+    resource_id: str | None = None
+    comment_provider: str | None = None
 
     def models(self, identifier, rule_set, previous=None):
         connector, kind = SOURCE_TYPES[self.type_label]
@@ -144,6 +154,13 @@ class SourceForm:
                 if self.token_env.strip()
                 else None
             )
+        elif connector == "pending_social":
+            params = {
+                "platform": self.type_label.split(" · ")[0],
+                "url": public_url(self.address),
+                "resource_id": self.resource_id,
+            }
+            credential = None
         elif connector == "bluesky_thread":
             params = BlueskyParams(url=self.address).model_dump()
             credential = None
@@ -172,12 +189,19 @@ class SourceForm:
             params=params,
             credential=credential,
             retention_days=retention,
+            tracking=self.tracking,
+            comment_credential=Credential(kind="api_key", env="ECHOSCOPE_DISQUS_KEY")
+            if self.comment_provider == "disqus"
+            else None,
+            initial_days=previous.initial_days if previous else 7,
+            follow_days=previous.follow_days if previous else 30,
+            resources_per_cycle=previous.resources_per_cycle if previous else 2,
         )
         job = Job(
             id=identifier,
             source=identifier,
             rule_set=rule_set,
-            enabled=self.enabled,
+            enabled=self.enabled and connector != "pending_social",
             interval_s=self.minutes * 60.0,
             relevant_only=self.relevant_only,
         )
@@ -287,7 +311,12 @@ class Administration:
 
     async def set_running(self, enabled):
         async with self.guard:
-            await (self._start() if enabled else self._stop())
+            if enabled:
+                await self._start()
+                await self.store.set_desktop_setting("monitoring_enabled", "true")
+            else:
+                await self.store.set_desktop_setting("monitoring_enabled", "false")
+                await self._stop()
 
     async def snapshot(self, query):
         radar = self.radar

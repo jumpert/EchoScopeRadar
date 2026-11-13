@@ -88,6 +88,9 @@ class SourceInput(StrictModel):
     relevant_only: bool = False
     token: str = Field(default="", max_length=4096)
     resource_url: str | None = Field(default=None, max_length=2048)
+    tracking: Literal["topic", "owned"] = "topic"
+    resource_id: str | None = Field(default=None, max_length=256)
+    comment_provider: Literal["disqus"] | None = None
 
 
 class ControlInput(StrictModel):
@@ -184,7 +187,11 @@ class Workspace:
             self.config = await self.service.open()
             try:
                 await self.vault.load()
-                if self.auto_start:
+                resume = (
+                    self.username
+                    and await self.service.store.desktop_setting("monitoring_enabled") == "true"
+                )
+                if self.auto_start or resume:
                     await self.service.set_running(True)
             except BaseException:
                 await self.service.close()
@@ -437,6 +444,8 @@ def result_data(result, sources, *, report=False):
 
 
 def source_categories(source):
+    if source.type == "pending_social":
+        return ["social"]
     if source.type == "bluesky_thread":
         return ["social"]
     if source.type == "press_feed":
@@ -474,6 +483,8 @@ def config_data(config):
             and kind in {"NEWS_ARTICLE", "FEED_ENTRY"}
         ):
             label = "Noticias de un sitio (RSS)"
+        if source.type == "pending_social":
+            label = source.params["platform"] + " · acceso pendiente"
         jobs.append(
             {
                 "id": job.id,
@@ -481,7 +492,7 @@ def config_data(config):
                     "youtube"
                     if source.type.startswith("youtube_")
                     else "social"
-                    if source.type == "bluesky_thread"
+                    if source.type in {"bluesky_thread", "pending_social"}
                     else "press"
                     if set(source_categories(source)) & {"news", "press"}
                     else "other"
@@ -499,6 +510,19 @@ def config_data(config):
                 "minutes": job.interval_s / 60,
                 "resource_url": source.params.get("resource_url"),
                 "enabled": job.enabled,
+                "tracking": source.tracking,
+                "platform": source.params.get("platform")
+                or (
+                    "YouTube"
+                    if source.type.startswith("youtube")
+                    else ("Bluesky" if source.type == "bluesky_thread" else "Sitio o feed")
+                ),
+                "resource_id": source.params.get("resource_id")
+                or source.params.get("channel")
+                or source.params.get("video_id")
+                or source.params.get("url"),
+                "credential_env": source.credential.env if source.credential else None,
+                "comment_provider": "disqus" if source.comment_credential else None,
                 "relevant_only": job.relevant_only,
                 "polling": source.type not in {"sim_live", "youtube_live", "youtube_channel_live"},
                 "categories": source_categories(source),
@@ -577,7 +601,7 @@ async def board(request):
         review_only=alerts_mode == "review",
     )
     *pages, alerts = await asyncio.gather(
-        *panels, filtered_alerts(service, alert_query, review, tone)
+        *panels, filtered_alerts(service, alert_query, review, tone, extra=session_previews(state))
     )
     rendered = {
         view: [result_data(item, sources) for item in rows] for view, rows in zip(views, pages)
@@ -612,6 +636,7 @@ async def board(request):
                     "detail": snap.detail,
                     "gap": snap.coverage_gap,
                     "next": snap.next_at.isoformat() if snap.next_at else None,
+                    "last": snap.last_at.isoformat() if snap.last_at else None,
                     "categories": source_categories(snap.source),
                     "uses_session_key": bool(
                         snap.source.credential and snap.source.credential.env == YOUTUBE_KEY
@@ -676,7 +701,15 @@ async def group_video_titles(state, rows):
         )
 
 
-async def filtered_alerts(service, query, review, tone):
+def session_previews(state):
+    return [
+        item
+        for (_, url), (_, conversation) in tuple(state.conversations.cache.items())
+        for item in preview_results(state, url, conversation)
+    ]
+
+
+async def filtered_alerts(service, query, review, tone, *, extra=()):
     rows = await service.store.messages(
         query,
         review_state=None if review == "all" else review,
@@ -685,7 +718,14 @@ async def filtered_alerts(service, query, review, tone):
     if radar := service.radar:
         for identifier in tuple(radar.session):
             rows.extend(await radar.messages(replace(query, job_id=identifier, limit=500)))
-    keyed = [(item, alert_key(item)) for item in rows]
+    rows.extend(
+        item
+        for item in extra
+        if (not query.text or query.text.casefold() in item.observation.message.text.casefold())
+        and (not query.matches_only or any(m.confirmed for m in item.observation.matches))
+        and (not query.review_only or any(m.method == "review" for m in item.observation.matches))
+    )
+    keyed = [(item, key) for key, item in {alert_key(item): item for item in rows}.items()]
     states = await service.store.alert_reviews(key for _, key in keyed)
     result = [
         (item, key, states.get(key, "open"))
@@ -735,6 +775,9 @@ async def action(request):
         if any(not re.fullmatch(r"[a-f0-9]{64}", key) for key in fields.keys):
             raise ValueError("Revisá las alertas seleccionadas.")
         allowed = await service.store.reviewable_keys(fields.keys)
+        allowed.update(
+            alert_key(item) for item in session_previews(state) if item.observation.matches
+        )
         if service.radar:
             allowed.update(
                 alert_key(item)
@@ -772,6 +815,9 @@ async def action(request):
             fields.relevant_only,
             token_env,
             fields.resource_url,
+            fields.tracking,
+            fields.resource_id,
+            fields.comment_provider,
         )
         state.config = await service.save_source(form, fields.id, fields.token)
     elif name == "remove":

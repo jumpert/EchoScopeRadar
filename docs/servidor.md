@@ -1,5 +1,17 @@
 # EchoScope Radar en un servidor compartido
 
+## Seguimiento permanente desde 0.12.0
+
+Después de iniciar sesión y configurar las fuentes, elegí **Iniciar seguimiento**. La intención queda guardada por cuenta. Al reiniciar el servidor, se recuperan los espacios activos sin esperar otro inicio de sesión. Cerrar el navegador o cerrar sesión mantiene la captura. **Pausar seguimiento** guarda la pausa y evita la recuperación automática.
+
+Para cuentas propias, elegí esa modalidad en el formulario de fuente. La propiedad es declarada por el operador. La lectura y los permisos se comprueban por separado al consultar. Las redes con acceso pendiente permanecen desactivadas.
+
+El archivo deploy/echoscope.service es una plantilla para Ubuntu. Prepará una cuenta de servicio llamada echoscope, instalá el proyecto y su entorno en /opt/echoscope y el archivo de configuración en /etc/echoscope/instalacion.env. Configurá SERVER_DIR, BIND, ORIGIN, TLS_CERT, TLS_KEY y MASTER_KEY. Copiá la unidad a /etc/systemd/system y ejecutá systemctl daemon-reload y systemctl enable --now echoscope. Revisá journalctl -u echoscope. Estas operaciones las realiza el administrador de la instalación.
+
+En Windows, usá el Programador de tareas con una cuenta de servicio autorizada. Creá una tarea con desencadenador **Al iniciar el sistema**, ejecutable C:/ruta/proyecto/.venv/Scripts/echoscope-web.exe y argumentos --env-file C:/EchoScopeRadar/instalacion.env --no-browser. Configurá el directorio de trabajo y los permisos de datos, certificados y archivo de entorno. Usá una única instancia y recuperación ante error. El archivo de entorno debe contener SERVER_DIR para iniciar el servidor compartido. Las credenciales del sistema se introducen mediante la interfaz de Windows.
+
+El servidor sigue sujeto a MAX_WORKSPACES y a los límites de concurrencia. Un fallo de apertura de un espacio activo se informa durante el arranque para que el administrador pueda corregirlo. Esta entrega proporciona plantillas e instrucciones y no instala servicios automáticamente.
+
 Cada cuenta tiene fuentes, historial, estado de alertas y claves propios. El modo compartido requiere HTTPS y una carpeta privada de datos bajo la cuenta del servicio. El ejecutable abierto con doble clic sigue iniciando la edición local. En la edición local, las claves cargadas en la aplicación duran la sesión.
 
 ## Preparar el servidor

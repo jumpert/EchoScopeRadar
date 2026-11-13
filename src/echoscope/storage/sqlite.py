@@ -42,7 +42,16 @@ def _iso(value):
 
 
 def _source_identity(source):
-    return source.id, source.type, source.params, source.credential
+    return (
+        source.id,
+        source.type,
+        source.params,
+        source.credential,
+        source.tracking,
+        source.initial_days,
+        source.follow_days,
+        source.comment_credential,
+    )
 
 
 def _migrate(path: Path):
@@ -408,6 +417,15 @@ class Store:
                 FROM (SELECT v.id AS version, entry.value->>'$.metadata.resource_title' AS title {versions}) AS t
                 WHERE s.job=:job AND s.source=:source AND s.version=t.version AND t.title IS NOT NULL
                   AND json_extract(s.metadata, '$.resource_title') IS NOT t.title"""),
+                args,
+            )
+        if any(item["metadata"].get("parent_id") for item in payload.values()):
+            await conn.execute(
+                text(f"""UPDATE message_sources AS s
+                SET metadata=json_set(s.metadata, '$.parent_id', t.parent)
+                FROM (SELECT v.id AS version, entry.value->>'$.metadata.parent_id' AS parent {versions}) AS t
+                WHERE s.job=:job AND s.source=:source AND s.version=t.version
+                  AND t.parent IS NOT NULL"""),
                 args,
             )
         if rules_by_message:

@@ -2,9 +2,11 @@ import asyncio
 from contextlib import aclosing
 from dataclasses import dataclass, replace
 from time import monotonic
+from urllib.parse import urlsplit
 
 from echoscope.connectors.bluesky import BlueskyThread
 from echoscope.connectors.comment_feed import discover_discussion_feeds
+from echoscope.connectors.discussion import discover_mechanisms, read_mechanism
 from echoscope.connectors.syndication import Feed
 from echoscope.connectors.youtube import YouTubeLive
 from echoscope.connectors.youtube_comments import YouTubeComments, video_id
@@ -53,9 +55,26 @@ class Conversations:
 
     async def _site(self, url):
         feeds = await discover_discussion_feeds(url)
-        if not feeds:
+        mechanisms = []
+        if not feeds or any(
+            urlsplit(address).path.rstrip("/").endswith("/comments/feed") for address, _ in feeds
+        ):
+            mechanisms = await discover_mechanisms(url)
+            if not mechanisms and not feeds:
+                return Conversation(
+                    status="SIN ACCESO A COMENTARIOS · El sitio no anuncia un mecanismo compatible."
+                )
+        if mechanisms:
+            messages = []
+            partial = False
+            for mechanism in mechanisms[:2]:
+                page = await read_mechanism(mechanism, article=url)
+                messages.extend(page.messages)
+                partial |= page.partial
             return Conversation(
-                status="El sitio no anuncia un feed de comentarios o reseñas accesible."
+                tuple(messages),
+                status="COMENTARIOS CONSULTADOS" if messages else "SIN COMENTARIOS",
+                partial=partial,
             )
         messages = []
         partial = len(feeds) > 3
@@ -68,6 +87,9 @@ class Conversations:
                         messages.extend(
                             replace(item, resource_id=url, url=item.url or url)
                             for item in batch.messages
+                            if not urlsplit(address).path.rstrip("/").endswith("/comments/feed")
+                            or item.url
+                            and item.url.split("#", 1)[0].rstrip("/") == url.rstrip("/")
                         )
                         if len(messages) >= 120:
                             partial = True

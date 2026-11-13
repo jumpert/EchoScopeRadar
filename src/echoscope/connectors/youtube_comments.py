@@ -127,6 +127,7 @@ def _message(item, resource, title=None):
         url=f"https://www.youtube.com/watch?{urlencode({'v': resource, 'lc': item['id']})}",
         published_at=parse_date(snippet.get("publishedAt")),
         resource_title=title,
+        parent_id=snippet.get("parentId"),
     )
 
 
@@ -137,7 +138,7 @@ class YouTubeComments:
     async def poll(self, request: Request):
         params = YouTubeCommentsParams.model_validate(request.source.params)
         headers = youtube_headers(request.source.credential)
-        page = None
+        page = request.checkpoint
         remaining_replies = params.reply_requests
         async with aiohttp.ClientSession(
             trust_env=False, timeout=aiohttp.ClientTimeout(total=request.timeout_s)
@@ -151,6 +152,7 @@ class YouTubeComments:
                     title = None
             self.title = title
             for index in range(params.max_pages):
+                applied_page = page
                 query = {
                     "part": "snippet,replies",
                     "videoId": params.video_id,
@@ -206,15 +208,16 @@ class YouTubeComments:
                         for item in replies.values()
                         if (message := _message(item, params.video_id, title))
                     )
-                # Upstream pagination can shift between polls. The store deduplicates this recent window.
+                # Advance only after all chunks from this page have been committed.
+                # At the end of the window the next cycle checks recent comments again.
                 for start in range(0, len(messages), 50):
                     yield Batch(
                         tuple(messages[start : start + 50]),
-                        None,
+                        page if start + 50 >= len(messages) else applied_page,
                         partial and start + 50 >= len(messages),
                     )
                 if not messages:
-                    yield Batch((), None, partial)
+                    yield Batch((), page, partial, detail="SIN COMENTARIOS")
                 if not page:
                     break
 

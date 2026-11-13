@@ -34,6 +34,11 @@ async def test_site_reads_announced_comments_and_reviews(monkeypatch):
         )
 
     monkeypatch.setattr("echoscope.application.conversations.discover_discussion_feeds", discover)
+
+    async def mechanisms(url):
+        return []
+
+    monkeypatch.setattr("echoscope.application.conversations.discover_mechanisms", mechanisms)
     monkeypatch.setattr("echoscope.application.conversations.Feed.poll", feed)
     result = await Conversations().read("article", article)
     assert [item.kind for item in result.messages] == [Kind.PRESS_COMMENT, Kind.REVIEW]

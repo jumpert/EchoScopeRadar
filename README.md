@@ -2,7 +2,7 @@
 
 Centro de monitoreo para comentarios, reseñas, feeds y chats de directos. Cada panel muestra los mensajes recibidos, incluidas las capturas sin coincidencias. Las reglas resaltan términos en el texto original y agrupan sus apariciones por alerta.
 
-## Versión 0.11.0 · Configuración de despliegue y revisión de seguridad
+## Versión 0.12.0 · Comentarios y seguimiento permanente
 
 En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa, YouTube, Bluesky y foros autorizados desde el navegador. Abrí **Probar EchoScope Radar.cmd** para practicar con datos simulados. En **Reseñas**, elegí **Cómo recibir reseñas** para empezar con el enlace de una página. **Descargar PDF** agrupa las alertas del período por publicación original y muestra su estado actual de revisión.
 
@@ -10,7 +10,11 @@ En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa, YouTube, Blu
 - [Pruebas y notas de prensa de Uruguay](docs/fuentes-uruguay.md)
 - [Historial de versiones](CHANGELOG.md)
 
-Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/0.11.0/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`.
+Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/0.12.0/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`.
+
+- [Fuentes de Uruguay y requisitos de conexión](docs/fuentes-uruguay-conexiones.md)
+- [Cómo consultar directamente la base](docs/consulta-base-datos.md)
+- [Validación de comentarios y cuentas propias](docs/validacion-comentarios.md)
 
 Copiá [.env.example](.env.example) a .env para configurar rutas, puertos, límites y dirección de base de datos. También podés indicar --env-file con un archivo externo. El demo conserva su base separada.
 

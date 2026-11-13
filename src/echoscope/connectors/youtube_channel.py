@@ -1,3 +1,4 @@
+import json
 import re
 from dataclasses import replace
 from urllib.parse import urlsplit
@@ -12,9 +13,10 @@ from echoscope.application.ports import (
     SourceUnavailable,
     SourceWaiting,
 )
-from echoscope.domain.models import Batch, Kind, Message
+from echoscope.domain.models import Batch, Kind, Message, utcnow
 from echoscope.domain.rules import evaluate
 
+from .policy import current_targets, publication_selected
 from .syndication import parse_date
 from .youtube import YouTubeLive, youtube_headers
 from .youtube_comments import CommentsUnavailable, YouTubeComments, _get
@@ -99,7 +101,13 @@ class YouTubeChannel(_Channel):
                 {"part": "snippet", "playlistId": playlist, "maxResults": 12},
                 headers,
             )
-        messages, follow = [], []
+        state = (
+            json.loads(request.checkpoint)
+            if request.checkpoint and request.checkpoint.startswith("{")
+            else {}
+        )
+        targets = state.setdefault("targets", {})
+        messages = []
         for item in data.get("items", []):
             snippet = item.get("snippet", {})
             identifier = snippet.get("resourceId", {}).get("videoId")
@@ -107,7 +115,7 @@ class YouTubeChannel(_Channel):
             if not identifier or not body:
                 continue
             matches = evaluate(body, request.rules)
-            if matches:
+            if matches or request.source.tracking == "owned":
                 messages.append(
                     Message(
                         Kind.YOUTUBE_VIDEO,
@@ -120,14 +128,24 @@ class YouTubeChannel(_Channel):
                         title=snippet.get("title") or "",
                     )
                 )
-            if any(match.confirmed for match in matches):
-                follow.append((identifier, (snippet.get("title") or "")[:300]))
+            published = parse_date(snippet.get("publishedAt"))
+            if publication_selected(request, snippet.get("title"), published):
+                targets[identifier] = {
+                    "title": (snippet.get("title") or "")[:300],
+                    "published": published.isoformat() if published else None,
+                    "seen": targets.get(identifier, {}).get("seen") or utcnow().isoformat(),
+                    "cursor": targets.get(identifier, {}).get("cursor"),
+                }
+        targets = state["targets"] = current_targets(targets, request.source)
+        follow = list(targets)
         yield Batch(tuple(messages), request.checkpoint)
         if not follow:
             return
-        start = int(request.checkpoint or 0) % len(follow)
-        for offset in range(min(2, len(follow))):
-            identifier, title = follow[(start + offset) % len(follow)]
+        start = state.get("offset", 0) % len(follow)
+        count = min(request.source.resources_per_cycle, len(follow))
+        for offset in range(count):
+            identifier = follow[(start + offset) % len(follow)]
+            title = targets[identifier]["title"]
             child = request.source.model_copy(
                 update={
                     "params": {
@@ -139,11 +157,15 @@ class YouTubeChannel(_Channel):
                 }
             )
             try:
-                async for batch in YouTubeComments().poll(replace(request, source=child)):
-                    yield replace(batch, checkpoint=request.checkpoint)
+                async for batch in YouTubeComments().poll(
+                    replace(request, source=child, checkpoint=targets[identifier].get("cursor"))
+                ):
+                    targets[identifier]["cursor"] = batch.checkpoint
+                    yield replace(batch, checkpoint=json.dumps(state))
             except CommentsUnavailable:
-                continue
-        yield Batch((), str((start + min(2, len(follow))) % len(follow)))
+                yield Batch((), request.checkpoint, detail="COMENTARIOS CERRADOS O NO DISPONIBLES")
+        state["offset"] = (start + count) % len(follow)
+        yield Batch((), json.dumps(state))
 
 
 class YouTubeChannelLive(_Channel):
@@ -168,9 +190,7 @@ class YouTubeChannelLive(_Channel):
             identifier = item.get("id", {}).get("videoId")
             snippet = item.get("snippet", {})
             body = _text(snippet)
-            if not identifier or not any(
-                match.confirmed for match in evaluate(body, request.rules)
-            ):
+            if not identifier or not publication_selected(request, snippet.get("title"), None):
                 continue
             found = True
             yield Batch(

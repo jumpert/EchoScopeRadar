@@ -29,6 +29,17 @@ class Source(StrictModel):
     params: dict[str, Any] = Field(default_factory=dict)
     credential: Credential | None = None
     retention_days: int = Field(default=30, ge=1, le=30)
+    tracking: Literal["topic", "owned"] = "topic"
+    comment_credential: Credential | None = None
+    initial_days: int = Field(default=7, ge=1, le=30)
+    follow_days: int = Field(default=30, ge=1, le=30)
+    resources_per_cycle: int = Field(default=2, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def valid_window(self):
+        if self.initial_days > self.follow_days:
+            raise ValueError("La ventana inicial debe estar dentro del período de seguimiento.")
+        return self
 
 
 class Job(StrictModel):

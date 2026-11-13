@@ -1,5 +1,6 @@
 from echoscope.application.ports import ConnectorType
 from echoscope.connectors.bluesky import BlueskyParams, BlueskyThread
+from echoscope.connectors.pending import PendingConnector, PendingParams
 from echoscope.connectors.press_feed import PressFeed
 from echoscope.connectors.simulated import SimParams, Simulator
 from echoscope.connectors.syndication import Feed, FeedParams
@@ -13,10 +14,27 @@ __all__ = ["create_store", "registry"]
 
 def registry() -> dict[str, ConnectorType]:
     connectors = (
+        ConnectorType("pending_social", "poll", PendingParams, PendingConnector, min_interval_s=60),
         ConnectorType("sim_poll", "poll", SimParams, Simulator, simulated=True),
         ConnectorType("sim_live", "stream", SimParams, Simulator, simulated=True),
-        ConnectorType("syndication", "poll", FeedParams, Feed, ("bearer",), min_interval_s=60),
-        ConnectorType("press_feed", "poll", FeedParams, PressFeed, ("bearer",), min_interval_s=60),
+        ConnectorType(
+            "syndication",
+            "poll",
+            FeedParams,
+            Feed,
+            ("bearer",),
+            min_interval_s=60,
+            capabilities=("publications", "comments", "recovery_window"),
+        ),
+        ConnectorType(
+            "press_feed",
+            "poll",
+            FeedParams,
+            PressFeed,
+            ("bearer",),
+            min_interval_s=60,
+            capabilities=("publications", "comments", "replies", "recovery_window"),
+        ),
         ConnectorType("bluesky_thread", "poll", BlueskyParams, BlueskyThread, min_interval_s=60),
         ConnectorType(
             "youtube_channel",
@@ -25,6 +43,7 @@ def registry() -> dict[str, ConnectorType]:
             YouTubeChannel,
             ("api_key", "oauth"),
             min_interval_s=300,
+            capabilities=("publications", "comments", "replies", "recovery_window"),
         ),
         ConnectorType(
             "youtube_channel_live",
@@ -34,6 +53,7 @@ def registry() -> dict[str, ConnectorType]:
             ("api_key", "oauth"),
             persistent=False,
             min_interval_s=1800,
+            capabilities=("publications", "live_chat"),
         ),
         ConnectorType(
             "youtube_comments",
@@ -42,6 +62,7 @@ def registry() -> dict[str, ConnectorType]:
             YouTubeComments,
             ("api_key", "oauth"),
             min_interval_s=300,
+            capabilities=("comments", "replies", "recovery_window"),
         ),
         ConnectorType(
             "youtube_live",
@@ -51,6 +72,7 @@ def registry() -> dict[str, ConnectorType]:
             ("api_key", "oauth"),
             persistent=False,
             min_interval_s=60,
+            capabilities=("live_chat",),
         ),
     )
     return {connector.name: connector for connector in connectors}

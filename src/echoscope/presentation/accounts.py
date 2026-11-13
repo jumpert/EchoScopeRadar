@@ -117,6 +117,17 @@ class Accounts:
 
     async def lifecycle(self, _app):
         try:
+            for username in self.users:
+                directory = hashlib.sha256(username.encode()).hexdigest()
+                path = self.root / "users" / directory / "radar.sqlite"
+                if not path.is_file():
+                    continue
+                with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as conn:
+                    enabled = conn.execute(
+                        "SELECT value FROM desktop_settings WHERE key='monitoring_enabled'"
+                    ).fetchone()
+                if enabled and enabled[0] == "true":
+                    await self.workspace(username)
             yield
         finally:
             await asyncio.gather(*(state.service.close() for state in self.workspaces.values()))

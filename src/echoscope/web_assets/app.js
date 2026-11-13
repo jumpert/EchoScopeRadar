@@ -600,6 +600,7 @@ function renderSources() {
       row.dataset.sourceId = id;
       const title = node("td", "", job.name);
       title.append(node("div", "metadata", job.type_label ?? "Fuente simulada"));
+      title.append(node("div", "metadata", job.tracking === "owned" ? "Cuenta propia · propiedad declarada" : "Por tema · títulos relacionados"));
       const controls = node("div", "source-order");
       const handle = node("span", "drag-handle", "⠿");
       handle.draggable = true;
@@ -640,6 +641,8 @@ function renderSources() {
       const info = states.get(job.id);
       const status = node("td", "", !job.enabled ? "Desactivada" : !ui.running ? "Seguimiento pausado" : (jobStates[info?.state] ?? "Disponible"));
       if (info?.detail) status.append(node("div", "metadata", sourceDetails[info.detail] ?? info.detail));
+      if (job.type_label?.includes("acceso pendiente")) status.append(node("div", "metadata", "Acceso pendiente de conector y permisos"));
+      else status.append(node("div", "metadata", info?.last ? `Última consulta: ${detailTime.format(new Date(info.last))}` : "Acceso todavía sin comprobar"));
       if (info?.next && ui.running) status.append(node("div", "metadata", `Próxima consulta: ${time.format(new Date(info.next))}`));
       const actions = node("td");
       if (job.type_label) actions.append(button("Editar", "button subtle", () => showSource(job)));
@@ -744,10 +747,14 @@ async function runAction(name, payload, success) {
 
 function sourceFields() {
   const type = $("source-type").value;
+  const pending = type.includes("acceso pendiente");
+  $("source-pending-help").hidden = !pending;
+  $("source-enabled").disabled = pending;
+  if (pending) $("source-enabled").checked = false;
   const feed = type.includes("RSS");
   const comments = type.startsWith("Comentarios de un sitio");
   const reviews = type.startsWith("Reseñas de un sitio");
-  $("address-label").textContent = reviews ? "Enlace de la página de reseñas" : feed ? (comments ? "Enlace del feed o de la página" : "Enlace HTTPS al RSS/Atom") :
+  $("address-label").textContent = pending ? "Enlace HTTPS de la página o canal" : reviews ? "Enlace de la página de reseñas" : feed ? (comments ? "Enlace del feed o de la página" : "Enlace HTTPS al RSS/Atom") :
     (type.includes("Bluesky") ? "Enlace de la publicación de Bluesky" : type.startsWith("Canal") ? "Enlace o @nombre del canal de YouTube" : "Enlace del video o directo");
   $("discover").hidden = !comments && !reviews;
   $("discover").textContent = reviews ? "Buscar reseñas en la página" : "Detectar feed";
@@ -771,6 +778,9 @@ function showSource(job = {}) {
   $("source-minutes").value = Math.max(1, Math.ceil(job.minutes ?? 15));
   $("source-enabled").checked = job.enabled ?? true;
   $("source-relevant").checked = job.relevant_only ?? false;
+  $("source-tracking").value = job.tracking ?? "topic";
+  $("source-resource-id").value = job.resource_id ?? "";
+  $("source-comment-provider").value = job.comment_provider ?? "";
   $("source-feedback").textContent = "";
   $("source-token").placeholder = job.protected ? "Vacío conserva el acceso de la fuente" : "Solo si el medio lo requiere";
   sourceFields();
@@ -955,6 +965,9 @@ $("source-form").addEventListener("submit", async (event) => {
       address: $("source-address").value, minutes: Number($("source-minutes").value), enabled: $("source-enabled").checked,
       relevant_only: $("source-relevant").checked, token: $("source-token").value,
       resource_url: $("source-parent").value || null,
+      tracking: $("source-tracking").value,
+      resource_id: $("source-resource-id").value || null,
+      comment_provider: $("source-comment-provider").value || null,
     });
     applyConfig(data);
     $("source-token").value = "";

@@ -5,10 +5,11 @@ from dataclasses import replace
 from urllib.parse import urlsplit
 
 from echoscope.application.ports import ConnectorError, Request, Transient
-from echoscope.domain.models import Batch, Kind
-from echoscope.domain.rules import evaluate
+from echoscope.domain.models import Batch, Kind, utcnow
 
 from .comment_feed import discover_discussion_feeds
+from .discussion import discover_mechanisms, read_mechanism
+from .policy import current_targets, publication_selected
 from .syndication import Feed
 
 
@@ -28,21 +29,26 @@ class PressFeed:
                     if (
                         item.url
                         and _site(item.url) == _site(feed_url)
-                        and any(match.confirmed for match in evaluate(item.text, request.rules))
+                        and publication_selected(
+                            request, item.title or item.text.split("\n")[0], item.published_at
+                        )
                     ):
                         targets.setdefault(
                             item.url, {"feed": None, "checked": False, "cursor": None}
                         )
                         if item.title:
                             targets[item.url]["title"] = item.title[:300]
+                        targets[item.url].setdefault("seen", utcnow().isoformat())
+                        if item.published_at:
+                            targets[item.url]["published"] = item.published_at.isoformat()
                 yield replace(batch, checkpoint=request.checkpoint)
 
         # Bound discovery and follow-up traffic. URLs and validators survive a 304 on the main RSS.
-        state["targets"] = targets = dict(list(targets.items())[-12:])
+        state["targets"] = targets = current_targets(targets, request.source)
         pending = [
             (url, target) for url, target in targets.items() if not target.get("discussion_checked")
         ]
-        for article, target in pending[:2]:
+        for article, target in pending[: request.source.resources_per_cycle]:
             try:
                 candidates = await asyncio.wait_for(discover_discussion_feeds(article), timeout=4)
             except (Transient, TimeoutError):
@@ -63,6 +69,17 @@ class PressFeed:
                     if candidate and candidate != target.get(field):
                         target[field] = candidate
                         target.pop("cursor" if field == "feed" else "review_cursor", None)
+                global_feed = any(
+                    urlsplit(url).path.rstrip("/").endswith("/comments/feed")
+                    for url, _ in candidates
+                )
+                if not candidates or global_feed:
+                    try:
+                        target["mechanisms"] = await discover_mechanisms(article)
+                        if target["mechanisms"] and global_feed:
+                            target["feed"] = None
+                    except (ConnectorError, TimeoutError):
+                        target["discussion_checked"] = False
             yield Batch((), json.dumps(state))
 
         active = [
@@ -75,7 +92,8 @@ class PressFeed:
             if target.get(field)
         ]
         start = state.get("offset", 0) % max(1, len(active))
-        for offset in range(min(2, len(active))):
+        issues = []
+        for offset in range(min(request.source.resources_per_cycle, len(active))):
             article, target, endpoint, kind, cursor = active[(start + offset) % len(active)]
             # Never send credentials from the main feed to a discovered endpoint.
             source = request.source.model_copy(
@@ -106,10 +124,55 @@ class PressFeed:
                                     url=item.url or article,
                                 )
                                 for item in batch.messages
+                                if (
+                                    not urlsplit(endpoint)
+                                    .path.rstrip("/")
+                                    .endswith("/comments/feed")
+                                    or item.url
+                                    and item.url.split("#", 1)[0].rstrip("/") == article.rstrip("/")
+                                )
                             ),
                             json.dumps(state),
+                            detail="COMENTARIOS CONSULTADOS"
+                            if batch.messages
+                            else "SIN COMENTARIOS",
                         )
-            except (ConnectorError, TimeoutError):
-                continue
-        state["offset"] = start + min(2, len(active))
-        yield Batch((), json.dumps(state))
+            except (ConnectorError, TimeoutError) as exc:
+                issues.append(exc.label if isinstance(exc, ConnectorError) else "TIEMPO AGOTADO")
+        state["offset"] = start + min(request.source.resources_per_cycle, len(active))
+        api_targets = [
+            (article, target, mechanism)
+            for article, target in targets.items()
+            for mechanism in target.get("mechanisms", [])
+        ]
+        api_start = state.get("api_offset", 0) % max(1, len(api_targets))
+        for offset in range(min(request.source.resources_per_cycle, len(api_targets))):
+            article, target, mechanism = api_targets[(api_start + offset) % len(api_targets)]
+            try:
+                page = await read_mechanism(
+                    mechanism,
+                    article=article,
+                    title=target.get("title"),
+                    cursor=mechanism.get("cursor"),
+                    credential=request.source.comment_credential,
+                )
+                mechanism["cursor"] = page.next_page
+                yield Batch(
+                    page.messages,
+                    json.dumps(state),
+                    page.partial,
+                    detail="CAPTURA PARCIAL"
+                    if page.partial
+                    else ("COMENTARIOS CONSULTADOS" if page.messages else "SIN COMENTARIOS"),
+                )
+            except (ConnectorError, TimeoutError) as exc:
+                issues.append(exc.label if isinstance(exc, ConnectorError) else "TIEMPO AGOTADO")
+        state["api_offset"] = api_start + min(request.source.resources_per_cycle, len(api_targets))
+        detail = (
+            "COMENTARIOS · " + " · ".join(dict.fromkeys(issues))
+            if issues
+            else "SIN ACCESO A COMENTARIOS"
+            if targets and not active and not api_targets
+            else None
+        )
+        yield Batch((), json.dumps(state), bool(issues), detail=detail)
