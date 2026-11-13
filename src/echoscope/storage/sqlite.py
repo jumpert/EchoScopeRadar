@@ -561,6 +561,7 @@ class Store:
                                WHERE a.observation=s.id AND m.method='review')""")
         arguments = {"now": _iso(utcnow()), "limit": min(500, max(1, query.limit))}
         if review_state:
+            conditions.append("EXISTS(SELECT 1 FROM alerts a WHERE a.observation=s.id)")
             conditions.append("""coalesce((SELECT r.state FROM alert_reviews r WHERE r.item =
                 radar_alert_key(s.job,json_extract(s.metadata,'$.origin'),json_extract(s.metadata,'$.external_id'),v.body)), 'open')=:review_state""")
             arguments["review_state"] = review_state

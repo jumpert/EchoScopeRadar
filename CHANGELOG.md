@@ -1,5 +1,13 @@
 # Historial de versiones
 
+## 0.13.0
+
+- Pestaña Base de datos: consulta visual de registros persistidos con filtros combinables, contenido completo y paginación estable de 50 filas.
+- Exportación de todos los resultados filtrados a Excel, CSV y PDF agrupado por publicación, con límites explícitos y protección frente a fórmulas externas.
+- Consultas aisladas por cuenta y de solo lectura, sin acceso al almacén de claves ni ejecución de SQL libre.
+- Lectura de cuerpos y comentarios de prensa en HTML estático identificable; clases post se aceptan como comentarios dentro de una conversación, preservando autor, fecha y respuesta.
+- Ayuda para recorrer noticia, comentarios y coincidencias de la lista blanca; pruebas de captura y aislamiento entre cuentas.
+
 ## 0.12.0
 
 - Fuentes por título relacionado y cuentas declaradas propias con seguimiento independiente del título.

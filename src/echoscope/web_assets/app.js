@@ -9,7 +9,7 @@ const labels = {
 const helpText = {
   board: ["Cómo usar la mesa", "Elegí qué pestañas ver y buscá dentro de lo ya recibido. «Alertas» muestra las coincidencias confirmadas. Congelar vista mantiene lo que ves mientras la captura sigue. Para buscar publicaciones nuevas, elegí Buscar por tema."],
   news: ["Noticias", "Titulares y extractos de los medios que seguís. Abrí el enlace de origen para leer la nota completa."],
-  press: ["Comentarios de prensa", "Aquí aparecen los comentarios de notas que ofrecen un feed accesible. También podés agregar un feed de comentarios desde Fuentes."],
+  press: ["Comentarios de prensa", "Primero se seleccionan las notas cuyo título coincide con la lista blanca. Después se lee la nota y se analizan por separado los comentarios públicos accesibles mediante RSS, WordPress, Disqus o HTML reconocible. Usá el filtro Alertas para priorizar los comentarios con coincidencias. Los comentarios cargados por sistemas no compatibles pueden quedar fuera."],
   youtube: ["Videos de YouTube", "Agregá tu clave en Claves API y verificá el acceso en Tema y acceso. Los canales automáticos consultan videos recientes relacionados con tus términos. Para leer un video concreto, agregá su enlace en Fuentes."],
   live: ["Chat en vivo", "Los canales automáticos esperan un directo relacionado con tus términos. Para probar uno que está al aire, agregá el enlace del directo en Fuentes. YouTube debe tener el chat habilitado y accesible."],
   reviews: ["Cómo recibir reseñas", ""],
@@ -796,6 +796,10 @@ function choosePage(page) {
     $(`${tab.dataset.page}-page`).hidden = !selected;
   }
   if (page === "sources") renderSources();
+  if (page === "database") {
+    refreshDataSources();
+    if (!dataView.query && ui.token) loadData();
+  }
 }
 
 async function setProjection(enabled) {
@@ -1271,6 +1275,104 @@ $("shutdown").addEventListener("click", async () => {
 $("logout").addEventListener("click", async () => {
   try { await api("logout", {}); window.location.reload(); }
   catch (error) { notice(error.message, true); }
+});
+
+const dataView = { query: null, pages: [null], index: 0, next: null, busy: false };
+function refreshDataSources() {
+  const selected = $("db-source").value;
+  $("db-source").replaceChildren(new Option("Todas las fuentes", ""));
+  const sources = new Map(ui.jobs.map((job) => [job.source_id || job.id, job.name]));
+  for (const [id, name] of sources) $("db-source").add(new Option(name, id));
+  $("db-source").value = selected;
+  if (!$("db-kind").dataset.ready) {
+    for (const [key, label] of Object.entries(names)) $("db-kind").add(new Option(label, key));
+    $("db-kind").dataset.ready = "true";
+  }
+}
+function dataFilters() {
+  return {
+    text: $("db-text").value.trim(), source: $("db-source").value || null,
+    kind: $("db-kind").value || null, severity: $("db-severity").value || null,
+    start: $("db-start").value || null, end: $("db-end").value || null,
+    review: $("db-review").value, tone: $("db-tone").value,
+    matches_only: $("db-matches").checked,
+  };
+}
+function dataButtons() {
+  for (const control of $("database-form").querySelectorAll("input,select,button")) control.disabled = dataView.busy;
+  $("db-export").disabled = dataView.busy || !dataView.query;
+  $("db-prev").disabled = dataView.busy || !dataView.query || dataView.index === 0;
+  $("db-next").disabled = dataView.busy || !dataView.query || !dataView.next;
+}
+async function loadData(index = 0, fresh = true) {
+  if (dataView.busy) return;
+  dataView.busy = true;
+  dataButtons();
+  $("db-status").textContent = "Consultando registros almacenados…";
+  try {
+    const query = fresh ? dataFilters() : { ...dataView.query };
+    const data = await api("data-query", { ...query, before: fresh ? null : dataView.pages[index] });
+    dataView.query = { ...query, snapshot: data.snapshot };
+    if (fresh) dataView.pages = [null];
+    dataView.index = index;
+    dataView.next = data.next_before;
+    $("db-page").textContent = `Página ${index + 1}`;
+    $("db-rows").replaceChildren();
+    for (const row of data.rows) {
+      const tr = node("tr");
+      const captured = node("td", "", row.captured.replace("T", " ").slice(0, 19));
+      captured.append(node("small", "metadata", `Registro #${row.id}`));
+      const source = node("td");
+      source.append(node("strong", "", row.title), node("small", "metadata", `${row.source} · ${names[row.kind] || row.kind}`));
+      const content = node("td");
+      const details = node("details");
+      details.append(node("summary", "", "Ver contenido completo"), node("p", "db-full-text", row.text));
+      content.append(node("strong", "", row.author), node("p", "db-excerpt", row.text.slice(0, 220) + (row.text.length > 220 ? "…" : "")), details);
+      const alert = node("td");
+      alert.append(node("strong", "", row.terms.join(" · ") || (row.approximate_terms?.length ? `Para revisar: ${row.approximate_terms.join(" · ")}` : "Sin coincidencias")),
+        node("small", "metadata", `${severity[row.severity] || "Sin prioridad"} · ${reviewLabels[row.review] || "Sin alerta"}`),
+        node("small", "metadata", `Tono: ${tones[row.tone]?.[1] || row.tone}`));
+      const link = node("td");
+      try { if (row.url && new URL(row.url).protocol === "https:") link.append(originLink(row.url, "Abrir origen ↗")); } catch { /* Invalid legacy link. */ }
+      tr.append(captured, source, content, alert, link);
+      $("db-rows").append(tr);
+    }
+    $("db-status").textContent = data.rows.length
+      ? `${data.rows.length} registros en esta página${data.has_more ? " · hay más resultados" : " · fin de los resultados"}. Consulta fijada al ${detailTime.format(new Date(data.snapshot))}.`
+      : "No hay registros almacenados para estos filtros. Probá ampliar las fechas o cambiar las palabras.";
+  } catch (error) {
+    $("db-status").textContent = error.message;
+    dataView.query = null;
+  } finally { dataView.busy = false; dataButtons(); }
+}
+$("database-form").addEventListener("submit", (event) => { event.preventDefault(); loadData(); });
+$("database-form").addEventListener("input", () => {
+  dataView.query = null; dataButtons();
+  $("db-status").textContent = "Los filtros cambiaron. Presioná Consultar para actualizar los resultados.";
+});
+$("db-reset").addEventListener("click", () => { $("database-form").reset(); loadData(); });
+$("db-prev").addEventListener("click", () => loadData(dataView.index - 1, false));
+$("db-next").addEventListener("click", () => {
+  dataView.pages[dataView.index + 1] = dataView.next;
+  loadData(dataView.index + 1, false);
+});
+$("db-export").addEventListener("click", async () => {
+  if (!dataView.query || dataView.busy) return;
+  const format = $("db-format").value;
+  dataView.busy = true; dataButtons();
+  $("db-status").textContent = "Preparando todos los resultados de la consulta…";
+  try {
+    const response = await fetch("/api/data-export", {
+      method: "POST", headers: { "Content-Type": "application/json", "X-EchoScope-Token": ui.token },
+      body: JSON.stringify({ ...dataView.query, format }), signal: AbortSignal.timeout(90000),
+    });
+    if (!response.ok) throw new Error((await response.json()).error || "No se pudo exportar.");
+    const url = URL.createObjectURL(await response.blob());
+    const link = node("a"); link.href = url; link.download = `EchoScope-datos.${format}`;
+    document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    $("db-status").textContent = "Archivo generado. Revisá las descargas del navegador.";
+  } catch (error) { $("db-status").textContent = error.message; }
+  finally { dataView.busy = false; dataButtons(); }
 });
 
 (async () => {

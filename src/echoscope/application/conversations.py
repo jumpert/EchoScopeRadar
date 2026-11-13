@@ -10,7 +10,7 @@ from echoscope.connectors.discussion import discover_mechanisms, read_mechanism
 from echoscope.connectors.syndication import Feed
 from echoscope.connectors.youtube import YouTubeLive
 from echoscope.connectors.youtube_comments import YouTubeComments, video_id
-from echoscope.domain.models import Message
+from echoscope.domain.models import Kind, Message
 
 from .administration import YOUTUBE_KEY
 from .config import Credential, Source
@@ -66,14 +66,34 @@ class Conversations:
                 )
         if mechanisms:
             messages = []
-            partial = False
-            for mechanism in mechanisms[:2]:
-                page = await read_mechanism(mechanism, article=url)
+            partial = len(mechanisms) > 3
+            failures = []
+            for mechanism in mechanisms[:3]:
+                selected = mechanism
+                if mechanism["type"] == "html" and failures:
+                    selected = {**mechanism, "comments": True}
+                try:
+                    page = await read_mechanism(selected, article=url)
+                except (ConnectorError, TimeoutError) as exc:
+                    failures.append(
+                        exc.label if isinstance(exc, ConnectorError) else "TIEMPO AGOTADO"
+                    )
+                    partial = True
+                    continue
                 messages.extend(page.messages)
                 partial |= page.partial
+            status = (
+                "COMENTARIOS CONSULTADOS"
+                if any(item.kind == Kind.PRESS_COMMENT for item in messages)
+                else "NOTA LEÍDA · SIN COMENTARIOS HTML IDENTIFICABLES"
+                if messages
+                else "SIN COMENTARIOS"
+            )
+            if failures:
+                status += " · CAPTURA PARCIAL: " + " · ".join(dict.fromkeys(failures))
             return Conversation(
                 tuple(messages),
-                status="COMENTARIOS CONSULTADOS" if messages else "SIN COMENTARIOS",
+                status=status,
                 partial=partial,
             )
         messages = []

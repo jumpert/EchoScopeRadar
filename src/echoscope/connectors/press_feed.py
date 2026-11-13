@@ -73,13 +73,15 @@ class PressFeed:
                     urlsplit(url).path.rstrip("/").endswith("/comments/feed")
                     for url, _ in candidates
                 )
-                if not candidates or global_feed:
-                    try:
-                        target["mechanisms"] = await discover_mechanisms(article)
-                        if target["mechanisms"] and global_feed:
-                            target["feed"] = None
-                    except (ConnectorError, TimeoutError):
-                        target["discussion_checked"] = False
+                try:
+                    target["mechanisms"] = await discover_mechanisms(article)
+                    if global_feed and any(
+                        item["type"] != "html" or item.get("comments")
+                        for item in target["mechanisms"]
+                    ):
+                        target["feed"] = None
+                except (ConnectorError, TimeoutError):
+                    target["discussion_checked"] = False
             yield Batch((), json.dumps(state))
 
         active = [
@@ -149,23 +151,36 @@ class PressFeed:
         for offset in range(min(request.source.resources_per_cycle, len(api_targets))):
             article, target, mechanism = api_targets[(api_start + offset) % len(api_targets)]
             try:
+                selected = mechanism
+                if mechanism["type"] == "html" and target.get("api_failed"):
+                    selected = {**mechanism, "comments": True}
                 page = await read_mechanism(
-                    mechanism,
+                    selected,
                     article=article,
                     title=target.get("title"),
                     cursor=mechanism.get("cursor"),
                     credential=request.source.comment_credential,
                 )
                 mechanism["cursor"] = page.next_page
+                if mechanism["type"] != "html":
+                    target["api_failed"] = False
                 yield Batch(
                     page.messages,
                     json.dumps(state),
                     page.partial,
                     detail="CAPTURA PARCIAL"
                     if page.partial
-                    else ("COMENTARIOS CONSULTADOS" if page.messages else "SIN COMENTARIOS"),
+                    else (
+                        "COMENTARIOS CONSULTADOS"
+                        if any(item.kind == Kind.PRESS_COMMENT for item in page.messages)
+                        else "NOTA LEÍDA · SIN COMENTARIOS HTML IDENTIFICABLES"
+                        if page.messages
+                        else "SIN COMENTARIOS"
+                    ),
                 )
             except (ConnectorError, TimeoutError) as exc:
+                if mechanism["type"] != "html":
+                    target["api_failed"] = True
                 issues.append(exc.label if isinstance(exc, ConnectorError) else "TIEMPO AGOTADO")
         state["api_offset"] = api_start + min(request.source.resources_per_cycle, len(api_targets))
         detail = (

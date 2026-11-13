@@ -2,6 +2,8 @@
 
 EchoScope Radar 0.12.0 · comprobaciones del 12 de noviembre de 2026
 
+Actualización 0.13.0: también existe lectura de cuerpos y comentarios en HTML estático identificable. Consultá [el recorrido de prensa y sus límites](consulta-visual-y-prensa.md). Las verificaciones de la tabla siguiente corresponden a la fecha indicada.
+
 ## Cómo usar esta guía
 
 En Fuentes, elegí Agregar fuente y copiá el enlace de la columna de conexión. Para noticias de prensa elegí Noticias de un sitio (RSS). La aplicación consulta comentarios de publicaciones cuyo título coincida con la lista blanca. Para recursos que administrás, elegí Cuenta propia para observar también publicaciones con otros títulos.

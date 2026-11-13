@@ -2,6 +2,8 @@
 
 Versión 0.11.0 · 12 de noviembre de 2026
 
+Actualización 0.13.0: `application/data_browser.py` define la consulta tipada sobre el puerto de lectura de observaciones; `presentation/data_exports.py` genera Excel con openpyxl, CSV estándar y PDF con ReportLab. La web usa el almacén de la cuenta autenticada, sin SQL libre ni nuevas tablas. `connectors/html_discussion.py` interpreta cuerpos y comentarios HTML estáticos dentro del transporte público validado de `discussion.py`. Se conservan los contratos de mensajes y persistencia existentes. La guía [Consulta visual y prensa](consulta-visual-y-prensa.md) detalla filtros, límites y pruebas de esta ampliación.
+
 ## Herramientas
 
 | Componente | Tecnología y función |

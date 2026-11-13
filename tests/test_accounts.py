@@ -3,8 +3,11 @@ import ssl
 import aiohttp
 import trustme
 from aiohttp.test_utils import TestClient, TestServer
+from conftest import demo_config
 from cryptography.fernet import Fernet
 
+from echoscope.application.engine import Radar
+from echoscope.bootstrap import registry
 from echoscope.presentation.accounts import COOKIE, Accounts, set_password
 from echoscope.presentation.web import Workspace, create_app
 
@@ -46,6 +49,19 @@ async def test_https_accounts_isolate_credentials_and_alert_reviews(tmp_path, mo
 
         alice, a, a_headers = await sign_in("alice")
         bob, b, b_headers = await sign_in("bob")
+        config = demo_config()
+        alice_state = accounts.workspaces["alice"]
+        await alice_state.service.store.configure(config)
+        alice_state.config = config
+        await Radar(alice_state.service.store, registry()).run_once("comentarios")
+        alice_data = await client.post("/api/data-query", json={}, headers=a_headers, **a)
+        assert (await alice_data.json())["rows"]
+        bob_data = await client.post("/api/data-query", json={}, headers=b_headers, **b)
+        assert (await bob_data.json())["rows"] == []
+        bob_export = await client.post(
+            "/api/data-export", json={"format": "csv"}, headers=b_headers, **b
+        )
+        assert len((await bob_export.text(encoding="utf-8-sig")).splitlines()) == 1
         assert not any(provider["available"] for provider in alice["credentials"]["providers"])
         assert not bob["credentials"]["entries"]
         payload = {"provider": "youtube", "name": "Institucional", "value": "fake-youtube-secret"}

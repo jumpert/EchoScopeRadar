@@ -37,6 +37,7 @@ from echoscope.application.administration import (
 from echoscope.application.config import Credential, StrictModel
 from echoscope.application.conversations import Conversations
 from echoscope.application.credentials import CredentialVault
+from echoscope.application.data_browser import DataQuery, query_data
 from echoscope.application.discovery import BRAVE_KEY, TopicDiscovery, public_result_url
 from echoscope.application.ports import AuthRequired, ConnectorError, StorageUnavailable
 from echoscope.application.secrets import account_secrets, secrets_for_request
@@ -57,6 +58,8 @@ from echoscope.domain.tone import message_tone
 from echoscope.settings import load_environment, runtime_settings
 
 from .accounts import COOKIE, Accounts, set_password
+from .data_exports import LABELS as DATA_LABELS
+from .data_exports import export_data
 from .report import report_pdf
 
 PANELS = {
@@ -281,6 +284,8 @@ async def boundary(request, handler):
         response = error(exc.label, 422)
     except StorageUnavailable:
         response = error("El historial está temporalmente inaccesible.", 503)
+    except TimeoutError:
+        response = error("La consulta tardó demasiado. Acotá los filtros y volvé a intentar.", 408)
     except (ValidationError, json.JSONDecodeError):
         response = error("Revisá los campos del formulario.", 400)
     except ValueError as exc:
@@ -488,6 +493,7 @@ def config_data(config):
         jobs.append(
             {
                 "id": job.id,
+                "source_id": source.id,
                 "default_group": (
                     "youtube"
                     if source.type.startswith("youtube_")
@@ -916,6 +922,40 @@ async def action(request):
         )
     elif name == "report":
         return await export_report(state, ReportInput.model_validate(data))
+    elif name in {"data-query", "data-export"}:
+        fields = DataQuery.model_validate(data)
+        if state.report_guard.locked():
+            raise ValueError("Ya se está preparando una consulta o exportación. Esperá un momento.")
+        async with state.report_guard:
+            async with asyncio.timeout(60):
+                result = await query_data(
+                    service.store, state.config, fields, exporting=name == "data-export"
+                )
+                if name == "data-query":
+                    return web.json_response(result)
+                if fields.format is None:
+                    raise ValueError("Elegí Excel, CSV o PDF.")
+                content, content_type = await asyncio.to_thread(
+                    export_data,
+                    result["rows"],
+                    fields.format,
+                    summary=(
+                        f"Consulta al {result['snapshot']} · "
+                        f"Desde: {fields.start or 'sin límite'} · Hasta: {fields.end or 'fecha de consulta'} · "
+                        f"Texto: {fields.text or 'todos'} · "
+                        f"Fuente: {next((source.label or source.id for source in state.config.sources if source.id == fields.source), fields.source or 'todas')} · "
+                        f"Tipo: {DATA_LABELS.get(fields.kind, 'Todos')} · Prioridad: {DATA_LABELS.get(fields.severity, 'Todas')} · "
+                        f"Revisión: {DATA_LABELS.get(fields.review, fields.review)} · Tono: {DATA_LABELS.get(fields.tone, fields.tone)} · "
+                        f"Solo coincidencias: {'sí' if fields.matches_only else 'no'}"
+                    ),
+                )
+                return web.Response(
+                    body=content,
+                    headers={
+                        "Content-Type": content_type,
+                        "Content-Disposition": f'attachment; filename="EchoScope-datos.{fields.format}"',
+                    },
+                )
     elif name == "search":
         return web.json_response(
             {

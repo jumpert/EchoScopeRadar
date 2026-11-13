@@ -12,6 +12,7 @@ from echoscope.application.config import Credential
 from echoscope.application.ports import AuthRequired, Forbidden, RateLimited, Transient
 from echoscope.domain.models import Kind, Message
 
+from .html_discussion import parse_discussion
 from .syndication import PublicResolver, _plain, parse_date, public_url
 
 
@@ -68,7 +69,7 @@ async def _public_get(url, *, params=None, json_body=True):
                     return json.loads(body), dict(response.headers)
                 except ValueError:
                     raise Transient() from None
-            return (await limited_bytes(response, 256 * 1024, truncate=True)).decode(
+            return (await limited_bytes(response, 1024 * 1024, truncate=True)).decode(
                 "utf-8", errors="replace"
             )
 
@@ -106,6 +107,21 @@ async def discover_mechanisms(url):
         forum = match[1] if match else None
     if forum:
         mechanisms.append({"type": "disqus", "forum": forum, "article": url})
+    try:
+        parsed, _ = parse_discussion(body, url)
+    except ValueError:
+        if mechanisms:
+            return mechanisms
+        raise Transient() from None
+    if parsed:
+        mechanisms.append(
+            {
+                "type": "html",
+                "url": url,
+                "comments": not bool(mechanisms)
+                and any(item.kind == Kind.PRESS_COMMENT for item in parsed),
+            }
+        )
     return mechanisms
 
 
@@ -117,6 +133,15 @@ class DiscussionPage:
 
 
 async def read_mechanism(mechanism, *, article, title=None, cursor=None, credential=None):
+    if mechanism["type"] == "html":
+        body = await public_get(article, json_body=False)
+        try:
+            messages, partial = parse_discussion(
+                body, article, title, include_comments=mechanism.get("comments", True)
+            )
+        except ValueError:
+            raise Transient() from None
+        return DiscussionPage(messages, partial=partial)
     if mechanism["type"] == "wordpress":
         endpoint = mechanism["url"]
         if urlsplit(endpoint).hostname != urlsplit(article).hostname:

@@ -33,6 +33,7 @@
       <button type="button" id="tab-sources" role="tab" aria-selected="false" aria-controls="sources-page" data-page="sources">Fuentes</button>
       <button type="button" id="tab-settings" role="tab" aria-selected="false" aria-controls="settings-page" data-page="settings">Tema y acceso</button>
       <button type="button" id="tab-credentials" role="tab" aria-selected="false" aria-controls="credentials-page" data-page="credentials">Claves API</button>
+      <button type="button" id="tab-database" role="tab" aria-selected="false" aria-controls="database-page" data-page="database">Base de datos</button>
       <span class="edition" id="edition">LOCAL</span>
     </div>
 
@@ -115,6 +116,24 @@
         <form id="credential-form" class="card"><h2>Agregar clave</h2><label for="credential-provider">Proveedor</label><select id="credential-provider" aria-describedby="credential-mode" required></select><p id="credential-mode" class="metadata"></p><div id="credential-custom" hidden><label for="credential-provider-label">Nombre del proveedor</label><input id="credential-provider-label" maxlength="80" placeholder="Ejemplo: servicio institucional"></div><label for="credential-name">Nombre de la clave</label><input id="credential-name" maxlength="80" placeholder="Ejemplo: cuenta institucional" required><label for="credential-value">Clave API o token</label><input id="credential-value" type="password" maxlength="4096" autocomplete="off" required><button type="submit" class="button primary">Guardar clave</button><p id="credential-feedback" role="status"></p></form>
         <div class="card"><h2>Mis claves</h2><div id="credential-list"></div><p id="credential-providers"></p></div>
       </div>
+    </section>
+    <section id="database-page" role="tabpanel" aria-labelledby="tab-database" class="settings-page" hidden>
+      <div class="section-heading"><div><p class="eyebrow">HISTORIAL ALMACENADO · SOLO LECTURA</p><h1>Base de datos</h1><p>Consultá noticias y comentarios guardados y descargá los resultados de tu cuenta.</p></div></div>
+      <details class="inline-guide"><summary>¿Cómo hago una consulta?</summary><ol><li>Elegí fechas, una fuente o palabras del contenido. Podés combinar varios filtros.</li><li>Presioná Consultar. Abrí «Ver contenido» para leer el registro completo o usá Siguiente para avanzar.</li><li>Elegí Excel, CSV o PDF y presioná Exportar consulta. Se descargan todos los resultados del filtro, no solo esta página.</li></ol><p>No se modifica ni elimina información. Las fechas corresponden a la captura en UTC. Los chats conservados solo durante la sesión y las vistas previas no aparecen aquí. La retención puede eliminar datos antiguos. El tono es una estimación automática, no una verificación humana.</p><p>Hasta 5.000 registros o 20 MB por exportación; PDF hasta 1.000. Si se supera el límite, acotá los filtros. No se exportan claves ni contraseñas.</p></details>
+      <form id="database-form" class="database-filters card">
+        <label>Palabras en el contenido<input id="db-text" type="search" maxlength="200" placeholder="Ejemplo: defensa"></label>
+        <label>Fuente<select id="db-source"><option value="">Todas las fuentes</option></select></label>
+        <label>Tipo<select id="db-kind"><option value="">Todos los tipos</option></select></label>
+        <label>Desde (UTC)<input id="db-start" type="date"></label><label>Hasta (UTC)<input id="db-end" type="date"></label>
+        <label>Prioridad<select id="db-severity"><option value="">Todas</option><option value="critical">Crítica</option><option value="important">Importante</option><option value="info">Informativa</option></select></label>
+        <label>Revisión<select id="db-review"><option value="all">Todas</option><option value="open">Sin verificar</option><option value="verified">Verificadas</option><option value="threat">Amenazas</option><option value="dismissed">Descartadas</option></select></label>
+        <label>Tono estimado<select id="db-tone"><option value="all">Todos</option><option value="negative">Negativo</option><option value="positive">Positivo</option><option value="mixed">Mixto</option><option value="neutral">Neutro</option></select></label>
+        <label class="db-check"><input id="db-matches" type="checkbox"> Solo coincidencias confirmadas</label>
+        <div class="input-row"><button class="button primary" type="submit">Consultar</button><button id="db-reset" class="button subtle" type="button">Limpiar filtros</button></div>
+      </form>
+      <div class="database-actions"><p id="db-status" class="feedback" role="status" aria-live="polite">Elegí los filtros y presioná Consultar.</p><div class="input-row"><label for="db-format" class="sr">Formato de exportación</label><select id="db-format"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV</option><option value="pdf">PDF</option></select><button id="db-export" class="button subtle" type="button" disabled>Exportar consulta</button></div></div>
+      <div class="database-table-wrap" tabindex="0" role="region" aria-label="Resultados de la consulta"><table class="database-table"><thead><tr><th>Captura (UTC)</th><th>Fuente y publicación</th><th>Autor y contenido</th><th>Alertas y revisión</th><th>Origen</th></tr></thead><tbody id="db-rows"></tbody></table></div>
+      <div class="database-pager"><button id="db-prev" type="button" class="button subtle" disabled>← Anterior</button><span id="db-page">Página 1</span><button id="db-next" type="button" class="button subtle" disabled>Siguiente →</button></div>
     </section>
   </main>
 

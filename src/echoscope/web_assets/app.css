@@ -253,3 +253,19 @@ dialog::backdrop { background:#050910a8 }
   .statusbar #updated { display:none }
 }
 @media(max-height:660px) { .board-heading h1 { font-size:21px } .board-page { gap:7px; padding-top:8px } .alert-rows { height:61px } }
+.database-filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:14px }
+.database-filters label { display:flex; flex-direction:column; gap:6px; font-size:13px }
+.database-filters .db-check { flex-direction:row; align-items:center }
+.database-filters input[type="checkbox"] { width:16px; height:16px; flex:none }
+.database-actions,.database-pager { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:12px 0 }
+.database-table-wrap { overflow:auto; border:1px solid var(--line); border-radius:8px; max-height:65vh }
+.database-table { width:100%; border-collapse:collapse; font-size:13px; min-width:960px }
+.database-table th { position:sticky; top:0; background:var(--surface); text-align:left; z-index:1 }
+.database-table td,.database-table th { padding:12px; border-bottom:1px solid var(--line); vertical-align:top }
+.database-table td:nth-child(2) { width:23% }
+.database-table td:nth-child(3) { width:35% }
+.database-table small { display:block; margin-top:6px }
+.database-table summary { cursor:pointer; color:var(--accent); margin-top:8px }
+.db-full-text,.db-excerpt { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5 }
+.db-full-text { max-height:360px; overflow:auto }
+.section-nav { overflow-x:auto; flex-shrink:0 }
