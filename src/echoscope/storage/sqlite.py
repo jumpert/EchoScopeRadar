@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from echoscope.application.config import Configuration
 from echoscope.application.ports import JobSnapshot, StorageUnavailable
+from echoscope.domain.identity import alert_identity
 from echoscope.domain.models import (
     Availability,
     HistoryQuery,
@@ -29,17 +30,7 @@ from echoscope.domain.models import (
     utcnow,
 )
 from echoscope.domain.tone import message_tone
-
-
-def alert_identity(job, origin, external_id, body):
-    return sha256(
-        json.dumps((job, origin, external_id, body), ensure_ascii=False).encode()
-    ).hexdigest()
-
-
-def alert_key(result):
-    message = result.observation.message
-    return alert_identity(result.job_id, message.origin, message.external_id, message.text)
+from echoscope.settings import runtime_settings
 
 
 def _date(value):
@@ -65,7 +56,15 @@ def _migrate(path: Path):
 class Store:
     def __init__(self, path: Path):
         self.path = path.resolve()
-        self.engine = create_async_engine(URL.create("sqlite+aiosqlite", database=str(self.path)))
+        settings = runtime_settings()
+        self.engine = create_async_engine(
+            URL.create("sqlite+aiosqlite", database=str(self.path)),
+            pool_pre_ping=True,
+            pool_size=settings.database_pool_size,
+            max_overflow=0,
+            pool_timeout=settings.database_pool_timeout_s,
+            hide_parameters=True,
+        )
         self._lock = FileLock(str(self.path) + ".writer.lock", timeout=0, thread_local=False)
         self._writer = asyncio.Lock()
         self.match_methods = True
@@ -74,7 +73,7 @@ class Store:
         def initialize(connection, _record):
             cursor = connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.execute("PRAGMA busy_timeout=1500")
+            cursor.execute(f"PRAGMA busy_timeout={settings.sqlite_busy_timeout_ms}")
             cursor.execute("PRAGMA secure_delete=ON")
             cursor.close()
             connection.create_function(
@@ -120,7 +119,7 @@ class Store:
             async with self._writer, self.engine.begin() as conn:
                 yield conn
         except DBAPIError:
-            raise StorageUnavailable("SQLite temporalmente inaccesible") from None
+            raise StorageUnavailable("El almacenamiento está temporalmente inaccesible") from None
 
     @asynccontextmanager
     async def reader(self):
@@ -128,7 +127,7 @@ class Store:
             async with self.engine.connect() as conn:
                 yield conn
         except DBAPIError:
-            raise StorageUnavailable("SQLite temporalmente inaccesible") from None
+            raise StorageUnavailable("El almacenamiento está temporalmente inaccesible") from None
 
     async def configuration(self, conn=None):
         if conn is None:
@@ -639,7 +638,26 @@ class Store:
             )
             return dict(rows.tuples().all())
 
+    async def reviewable_keys(self, keys):
+        async with self.reader() as conn:
+            result = await conn.execute(
+                text("""
+                SELECT DISTINCT radar_alert_key(s.job,m.origin,m.external_id,v.body) AS item
+                FROM message_sources s
+                JOIN message_versions v ON v.id=s.version
+                JOIN messages m ON m.id=v.message
+                WHERE s.expires>:now
+                AND EXISTS (SELECT 1 FROM alerts a WHERE a.observation=s.id)
+                AND radar_alert_key(s.job,m.origin,m.external_id,v.body)
+                    IN (SELECT value FROM json_each(:items))
+            """),
+                {"now": _iso(utcnow()), "items": json.dumps(list(keys))},
+            )
+            return set(result.scalars())
+
     async def set_alert_reviews(self, keys, state):
+        if state not in {"open", "verified", "threat", "dismissed"}:
+            raise ValueError("Estado de revisión no válido.")
         async with self.transaction() as conn:
             params = {"items": json.dumps(keys), "state": state, "changed": _iso(utcnow())}
             if state == "open":
@@ -656,6 +674,14 @@ class Store:
                     ON CONFLICT(item) DO UPDATE SET state=excluded.state, changed=excluded.changed"""),
                     params,
                 )
+            await self._audit(conn, "AlertReviewChanged", state)
+
+    def writer_available(self):
+        try:
+            with FileLock(str(self.path) + ".writer.lock", timeout=0):
+                return True
+        except Timeout:
+            return False
 
     async def desktop_setting(self, key):
         async with self.reader() as conn:
@@ -682,6 +708,14 @@ class Store:
                     text("DELETE FROM message_sources WHERE source=:s"), {"s": source}
                 )
                 await self._audit(conn, "SourcePurged", source)
+            await conn.execute(
+                text("""DELETE FROM alert_reviews WHERE item NOT IN (
+                SELECT radar_alert_key(s.job,m.origin,m.external_id,v.body)
+                FROM message_sources s
+                JOIN message_versions v ON v.id=s.version
+                JOIN messages m ON m.id=v.message
+            )""")
+            )
             await conn.execute(
                 text("""DELETE FROM message_versions WHERE NOT EXISTS
                 (SELECT 1 FROM message_sources WHERE version=message_versions.id)""")

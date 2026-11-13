@@ -6,6 +6,9 @@ from echoscope.connectors.syndication import Feed, FeedParams
 from echoscope.connectors.youtube import YouTubeLive, YouTubeParams
 from echoscope.connectors.youtube_channel import ChannelParams, YouTubeChannel, YouTubeChannelLive
 from echoscope.connectors.youtube_comments import YouTubeComments, YouTubeCommentsParams
+from echoscope.storage.factory import create_store
+
+__all__ = ["create_store", "registry"]
 
 
 def registry() -> dict[str, ConnectorType]:

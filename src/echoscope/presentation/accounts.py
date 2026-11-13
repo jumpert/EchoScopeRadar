@@ -10,6 +10,8 @@ from time import monotonic
 
 from cryptography.fernet import Fernet
 
+from echoscope.settings import runtime_settings
+
 USER = re.compile(r"[a-z0-9][a-z0-9_.-]{2,39}\Z")
 COOKIE = "__Host-echoscope"
 
@@ -35,6 +37,7 @@ def set_password(root, username, password):
 
 class Accounts:
     def __init__(self, root, origin, master_key, factory, *, auto_start=False):
+        self.settings = runtime_settings()
         if not (root / "accounts.sqlite").is_file():
             raise ValueError("Creá al menos una cuenta antes de iniciar el servidor.")
         with closing(sqlite3.connect(root / "accounts.sqlite")) as conn:
@@ -55,7 +58,7 @@ class Accounts:
         self.attempts = {}
         self.workspaces = {}
         self.lock = asyncio.Lock()
-        self.hash_slots = asyncio.Semaphore(4)
+        self.hash_slots = asyncio.Semaphore(self.settings.password_hash_slots)
 
     async def authenticate(self, username, password, peer):
         now = monotonic()
@@ -67,7 +70,7 @@ class Accounts:
                 return None
         attempts = self.attempts.setdefault(peer, [])
         attempts[:] = [stamp for stamp in attempts if stamp > now - 60]
-        if len(attempts) >= 8:
+        if len(attempts) >= self.settings.login_attempts_per_minute:
             return None
         attempts.append(now)
         if self.hash_slots.locked():
@@ -81,10 +84,10 @@ class Accounts:
         if now in attempts:
             attempts.remove(now)
         self.sessions = {key: session for key, session in self.sessions.items() if session[1] > now}
-        if len(self.sessions) >= 512:
+        if len(self.sessions) >= self.settings.max_sessions:
             return None
         token = secrets.token_urlsafe(32)
-        self.sessions[token] = (username, now + 8 * 3600)
+        self.sessions[token] = (username, now + self.settings.session_ttl_s)
         return token
 
     def username(self, token):
@@ -97,7 +100,7 @@ class Accounts:
     async def workspace(self, username):
         async with self.lock:
             if username not in self.workspaces:
-                if len(self.workspaces) >= 32:
+                if len(self.workspaces) >= self.settings.max_workspaces:
                     raise ValueError("Se alcanzó la capacidad de espacios activos del servidor.")
                 digest = hmac.digest(self.master, b"echoscope-vault:" + username.encode(), "sha256")
                 directory = hashlib.sha256(username.encode()).hexdigest()

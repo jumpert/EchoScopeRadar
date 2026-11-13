@@ -1,0 +1,18 @@
+name: Validation
+on: [push, pull_request]
+jobs:
+  offline:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.7"
+      - run: uv python install 3.12
+      - run: uv sync --locked --extra youtube
+      - run: uv run --no-sync ruff check src tests scripts/validate-platform.py
+      - run: uv run --no-sync pytest -q -m "not internet and not performance"
+      - run: uv run --no-sync python scripts/validate-platform.py

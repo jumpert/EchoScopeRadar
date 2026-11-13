@@ -20,3 +20,6 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Copy-Item -LiteralPath 'Probar EchoScope Radar.cmd', 'Abrir EchoScope Radar.cmd' -Destination $package
 Copy-Item -LiteralPath 'docs/uso-administrativo.md', 'docs/fuentes-uruguay.md', 'CHANGELOG.md' -Destination $package
 Copy-Item -LiteralPath 'docs/servidor.md' -Destination $package
+Copy-Item -Path 'docs/documento-*.md', 'docs/auditoria-inicial.md', 'docs/informe-validacion.md' -Destination $package
+Copy-Item -LiteralPath '.env.example' -Destination $package
+Copy-Item -LiteralPath 'docs/dependency-audit.json' -Destination $package

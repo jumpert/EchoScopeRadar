@@ -4,9 +4,11 @@ import argparse
 import asyncio
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
+import signal
 import ssl
 import sys
 import webbrowser
@@ -22,8 +24,8 @@ from urllib.parse import urlsplit
 
 import aiohttp
 from aiohttp import web
-from platformdirs import user_data_path
 from pydantic import ConfigDict, Field, ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 
 from echoscope.application.administration import (
     RSS_TYPES,
@@ -40,6 +42,7 @@ from echoscope.application.ports import AuthRequired, ConnectorError, StorageUna
 from echoscope.application.secrets import account_secrets, secrets_for_request
 from echoscope.connectors.youtube import youtube_headers
 from echoscope.connectors.youtube_comments import VIDEO_ID, video_id, video_titles
+from echoscope.domain.identity import alert_key
 from echoscope.domain.models import (
     HistoryQuery,
     Kind,
@@ -51,7 +54,7 @@ from echoscope.domain.models import (
 )
 from echoscope.domain.rules import evaluate
 from echoscope.domain.tone import message_tone
-from echoscope.storage.sqlite import alert_key
+from echoscope.settings import load_environment, runtime_settings
 
 from .accounts import COOKIE, Accounts, set_password
 from .report import report_pdf
@@ -199,10 +202,35 @@ class Workspace:
 
 KEY = web.AppKey("workspace", Workspace)
 ACCOUNTS = web.AppKey("accounts", Accounts)
+LOG = logging.getLogger(__name__)
 
 
 def error(message, status):
     return web.json_response({"error": message}, status=status)
+
+
+@web.middleware
+async def security_headers(request, handler):
+    try:
+        response = await handler(request)
+    except web.HTTPException as exc:
+        response = exc
+    except SQLAlchemyError:
+        response = error("El almacenamiento está temporalmente inaccesible.", 503)
+    except Exception as exc:
+        LOG.error("request_failed", extra={"error_type": type(exc).__name__})
+        response = error("No se pudo completar la operación.", 500)
+    response.headers.update(
+        {
+            "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
+            "connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
+            "Cache-Control": "no-store",
+        }
+    )
+    return response
 
 
 @web.middleware
@@ -241,7 +269,7 @@ async def boundary(request, handler):
     try:
         response = await handler(request)
     except AuthRequired:
-        response = error("Cargá una clave válida en Tema y acceso.", 422)
+        response = error("Cargá una clave válida en Claves API.", 422)
     except ConnectorError as exc:
         response = error(exc.label, 422)
     except StorageUnavailable:
@@ -254,16 +282,6 @@ async def boundary(request, handler):
         account_secrets.reset(scope)
     if state and response.status < 400 and request.path.startswith("/api/"):
         state.last_seen = monotonic()
-    response.headers.update(
-        {
-            "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
-            "connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",
-            "Referrer-Policy": "no-referrer",
-            "X-Content-Type-Options": "nosniff",
-            "X-Frame-Options": "DENY",
-            "Cache-Control": "no-store",
-        }
-    )
     return response
 
 
@@ -716,6 +734,18 @@ async def action(request):
         fields = ReviewInput.model_validate(data)
         if any(not re.fullmatch(r"[a-f0-9]{64}", key) for key in fields.keys):
             raise ValueError("Revisá las alertas seleccionadas.")
+        allowed = await service.store.reviewable_keys(fields.keys)
+        if service.radar:
+            allowed.update(
+                alert_key(item)
+                for window in service.radar.session.values()
+                for item in window.values()
+                if item.observation.matches
+            )
+        if set(fields.keys) - allowed:
+            raise ValueError(
+                "Alguna alerta ya no está disponible en esta cuenta. Actualizá la vista."
+            )
         await service.store.set_alert_reviews(fields.keys, fields.state)
         return web.json_response({"detail": "Estado de alertas actualizado."})
     elif name == "source":
@@ -1027,7 +1057,10 @@ async def logout(request):
 
 
 def create_app(path, *, practice=False, auto_start=True, accounts=None):
-    app = web.Application(middlewares=[boundary], client_max_size=64 * 1024)
+    app = web.Application(
+        middlewares=[security_headers, boundary],
+        client_max_size=runtime_settings().request_max_bytes,
+    )
     if accounts:
         app[ACCOUNTS] = accounts
         app.cleanup_ctx.append(accounts.lifecycle)
@@ -1045,15 +1078,20 @@ def create_app(path, *, practice=False, auto_start=True, accounts=None):
     return app
 
 
-async def serve(path, *, practice, port, browser):
+async def serve(path, *, practice, port, browser, bind="127.0.0.1"):
     app = create_app(path, practice=practice)
     state = app[KEY]
-    runner = web.AppRunner(app, access_log=None, shutdown_timeout=5)
+    settings = runtime_settings()
+    runner = web.AppRunner(app, access_log=None, shutdown_timeout=settings.shutdown_timeout_s)
     await runner.setup()
+    previous = signal.getsignal(signal.SIGTERM)
+    loop = asyncio.get_running_loop()
+    signal.signal(signal.SIGTERM, lambda *_: loop.call_soon_threadsafe(state.closed.set))
     try:
-        site = web.TCPSite(runner, "127.0.0.1", port)
+        site = web.TCPSite(runner, bind, port)
         await site.start()
-        state.authority = f"127.0.0.1:{runner.addresses[0][1]}"
+        host = f"[{bind}]" if ":" in bind else bind
+        state.authority = f"{host}:{runner.addresses[0][1]}"
         url = f"http://{state.authority}/"
         if sys.stdout:
             print(f"EchoScope Radar · {url}", flush=True)
@@ -1063,9 +1101,10 @@ async def serve(path, *, practice, port, browser):
             try:
                 await asyncio.wait_for(state.closed.wait(), timeout=5)
             except TimeoutError:
-                if browser and monotonic() - state.last_seen > 180:
+                if browser and monotonic() - state.last_seen > settings.local_idle_timeout_s:
                     break
     finally:
+        signal.signal(signal.SIGTERM, previous)
         await runner.cleanup()
 
 
@@ -1073,6 +1112,8 @@ def main():
     parser = argparse.ArgumentParser(description="EchoScope Radar · estación web local")
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--db", type=Path)
+    parser.add_argument("--database-url")
+    parser.add_argument("--env-file", type=Path)
     parser.add_argument("--port", type=int)
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--server-dir", type=Path, help="Carpeta privada del servidor multiusuario")
@@ -1080,15 +1121,35 @@ def main():
         "--set-password", metavar="USUARIO", help="Crea o actualiza una cuenta del servidor"
     )
     parser.add_argument("--origin", help="Dirección HTTPS exacta del servidor")
-    parser.add_argument("--bind", default="127.0.0.1")
+    parser.add_argument("--bind")
     parser.add_argument("--tls-cert", type=Path)
     parser.add_argument("--tls-key", type=Path)
     args = parser.parse_args()
-    port = args.port if args.port is not None else (8766 if args.demo else 8765)
-    path = args.db or user_data_path("EchoScopeRadar", appauthor=False) / (
-        "practica.sqlite" if args.demo else "administracion.sqlite"
-    )
     try:
+        settings = load_environment(args.env_file)
+        port = (
+            args.port
+            if args.port is not None
+            else (settings.demo_port if args.demo else settings.port)
+        )
+        if not 1 <= port <= 65535:
+            raise ValueError("El puerto debe estar entre 1 y 65535.")
+        if args.db and args.database_url:
+            raise ValueError("Elegí --db o --database-url.")
+        args.bind = args.bind or settings.bind
+        args.server_dir = args.server_dir or settings.server_dir
+        args.origin = args.origin or settings.origin
+        args.tls_cert = args.tls_cert or settings.tls_cert
+        args.tls_key = args.tls_key or settings.tls_key
+        path = (
+            args.db
+            or args.database_url
+            or (
+                settings.data_dir / "practica.sqlite"
+                if args.demo
+                else settings.database_target("administracion.sqlite")
+            )
+        )
         if args.set_password:
             from getpass import getpass
 
@@ -1107,6 +1168,7 @@ def main():
             if (
                 args.demo
                 or args.db
+                or args.database_url
                 or url.scheme != "https"
                 or not url.hostname
                 or url.username
@@ -1136,7 +1198,11 @@ def main():
                 access_log=None,
             )
             return
-        asyncio.run(serve(path, practice=args.demo, port=port, browser=not args.no_browser))
+        if args.bind not in {"127.0.0.1", "::1", "localhost"}:
+            raise ValueError("Para acceso por red usá el modo servidor HTTPS con cuentas.")
+        asyncio.run(
+            serve(path, practice=args.demo, port=port, browser=not args.no_browser, bind=args.bind)
+        )
     except KeyboardInterrupt:
         pass
     except (ValueError, OSError, StorageUnavailable) as exc:

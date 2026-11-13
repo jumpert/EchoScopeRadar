@@ -5,7 +5,6 @@ from collections.abc import Awaitable, Callable
 from contextlib import aclosing
 from dataclasses import replace
 from datetime import datetime, timedelta
-from typing import Protocol
 
 from echoscope.domain.models import (
     Availability,
@@ -18,13 +17,13 @@ from echoscope.domain.models import (
     utcnow,
 )
 from echoscope.domain.rules import evaluate
+from echoscope.settings import runtime_settings
 
-from .config import Configuration
 from .ports import (
-    BatchSink,
     ConnectorError,
     ConnectorType,
     CursorExpired,
+    EngineStore,
     JobCommand,
     JobSnapshot,
     RateLimited,
@@ -39,30 +38,19 @@ from .ports import (
 LOG = logging.getLogger(__name__)
 
 
-class Storage(BatchSink, Protocol):
-    async def recover(self): ...
-    async def snapshots(self) -> dict[str, JobSnapshot]: ...
-    async def configuration(self) -> Configuration | None: ...
-    async def start(self, snapshot: JobSnapshot) -> int: ...
-    async def save(self, snapshot: JobSnapshot, execution_id=None, *, action=None): ...
-    async def finish(self, snapshot: JobSnapshot, execution_id: int, outcome: str): ...
-    async def coverage_gap(self, snapshot: JobSnapshot, execution_id: int | None): ...
-    async def purge(self): ...
-    async def messages(self, query: HistoryQuery) -> list[Result]: ...
-    async def events(self, after: int, limit: int): ...
-
-
 class Radar:
     def __init__(
         self,
-        store: Storage,
+        store: EngineStore,
         registry: dict[str, ConnectorType],
         *,
         now: Callable[[], datetime] = utcnow,
         jitter: Callable[[], float] = random.random,
         delay: Callable[[float], Awaitable] = asyncio.sleep,
+        settings=None,
     ):
         self.store = store
+        self.settings = settings or runtime_settings()
         self.registry = registry
         self.now = now
         self.jitter = jitter
@@ -116,7 +104,7 @@ class Radar:
 
     async def run(self):
         await self.initialize()
-        next_purge = asyncio.get_running_loop().time() + 86400
+        next_purge = asyncio.get_running_loop().time() + self.settings.retention_interval_s
         try:
             while not self.stopping:
                 self.wake.clear()
@@ -127,7 +115,9 @@ class Radar:
                         LOG.warning("retention_retry")
                         next_purge = asyncio.get_running_loop().time() + 60
                     else:
-                        next_purge = asyncio.get_running_loop().time() + 86400
+                        next_purge = (
+                            asyncio.get_running_loop().time() + self.settings.retention_interval_s
+                        )
                         self._notify()
                 self._launch_due()
                 try:
@@ -138,7 +128,9 @@ class Radar:
             self.stop()
             pending = list(self.tasks.values())
             if pending:
-                _, unfinished = await asyncio.wait(pending, timeout=3)
+                _, unfinished = await asyncio.wait(
+                    pending, timeout=self.settings.shutdown_timeout_s
+                )
                 for task in unfinished:
                     task.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
@@ -155,7 +147,7 @@ class Radar:
         ]
 
     def _launch_due(self):
-        free = {"poll": 4, "stream": 2}
+        free = {"poll": self.settings.poll_slots, "stream": self.settings.stream_slots}
         for key in self.tasks:
             free[self.registry[self.jobs[key].source.type].mode] -= 1
         now = self.now()
@@ -315,7 +307,7 @@ class Radar:
                     self.jobs[key] = updated
                     self._notify()
             except (TimeoutError, Transient) as error:
-                if retries >= 3:
+                if retries >= self.settings.retries:
                     raise Transient() from error
                 retries += 1
                 minimum = definition.min_interval_s if definition.mode == "poll" else 0
@@ -408,7 +400,7 @@ class Radar:
                 window[key] = Result(
                     self.session_sequence, snapshot.job.id, snapshot.source.id, item
                 )
-            if len(window) > 200:
+            if len(window) > self.settings.session_message_limit:
                 del window[next(iter(window))]
 
     async def _change(self, key, execution=None, *, action=None, **changes):

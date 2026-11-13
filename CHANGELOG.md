@@ -1,5 +1,14 @@
 # Historial de versiones
 
+## 0.11.0
+
+- Auditoría funcional y de seguridad, documentación de usuario, documento técnico con MER e informe de pruebas por sistema operativo.
+- Configuración de despliegue tipada desde .env, variables del proceso y argumentos de CLI.
+- Fábrica de persistencia con URL SQLAlchemy, registro de adaptadores e inyección de almacén y conectores.
+- Validación de pertenencia de alertas, auditoría de revisiones, limpieza de decisiones huérfanas, lectura JSON limitada y errores HTTP sin datos internos.
+- Cierre por SIGTERM de la estación web, salida UTF-8 de CLI y CI Windows/Ubuntu.
+- Actualización de FileLock a una versión corregida y comprobación de dependencias.
+
 ## 0.10.0
 
 - Los PDF incluyen barras con cifras y etiquetas legibles en escala de grises. El detalle completo agrega un cuadro por tipo de contenido.

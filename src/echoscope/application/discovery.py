@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 
 import aiohttp
 
+from echoscope.connectors.http import bounded_json
 from echoscope.connectors.syndication import Feed, PublicResolver, public_url
 from echoscope.connectors.youtube_comments import video_id
 from echoscope.domain.models import category, publication_title
@@ -68,7 +69,7 @@ async def search_web(terms, key, *, social=False):
             raise RateLimited()
         if response.status != 200:
             raise Transient()
-        data = await response.json()
+        data = await bounded_json(response)
     return [
         {
             "title": item.get("title", "")[:300],

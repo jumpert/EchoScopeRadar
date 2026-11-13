@@ -3,17 +3,17 @@ from dataclasses import dataclass, replace
 from importlib.resources import as_file, files
 from uuid import uuid4
 
-from echoscope.bootstrap import registry
+from echoscope.bootstrap import create_store, registry
 from echoscope.connectors.bluesky import BlueskyParams
 from echoscope.connectors.comment_feed import discover_comment_feed, discover_discussion_feeds
 from echoscope.connectors.syndication import public_url
 from echoscope.connectors.youtube_channel import channel_reference, check_access
 from echoscope.connectors.youtube_comments import find_videos, video_id
-from echoscope.storage.sqlite import Store
+from echoscope.settings import runtime_settings
 
 from .config import Configuration, Credential, Job, RuleSpec, Source, read_config
 from .engine import Radar, validate_config
-from .ports import AuthRequired, Forbidden, JobCommand
+from .ports import AuthRequired, Forbidden, JobCommand, RadarStore
 from .secrets import secrets_for_request
 
 YOUTUBE_KEY = "ECHOSCOPE_YOUTUBE_KEY"
@@ -185,10 +185,14 @@ class SourceForm:
 
 
 class Administration:
-    def __init__(self, path, practice=False):
-        self.store = Store(path)
+    def __init__(
+        self, path=None, practice=False, *, store: RadarStore | None = None, connectors=None
+    ):
+        if path is None and store is None:
+            raise ValueError("Se requiere un almacén o una dirección de base de datos.")
+        self.store = store if store is not None else create_store(path)
         self.practice = practice
-        self.connectors = registry()
+        self.connectors = connectors if connectors is not None else registry()
         self.guard = asyncio.Lock()
         self.worker = None
         self.radar = None
@@ -202,7 +206,14 @@ class Administration:
             try:
                 config = await self.store.configuration()
                 if config is None:
-                    config = _example("demo.yaml" if self.practice else "defensa-uruguay.yaml")
+                    custom = runtime_settings().source_config
+                    config = (
+                        read_config(custom)
+                        if custom and not self.practice
+                        else _example("demo.yaml" if self.practice else "defensa-uruguay.yaml")
+                    )
+                    if custom and not self.practice:
+                        config = config.model_copy(update={"desktop_profile": 2})
                     validate_config(config, self.connectors)
                     await self.store.configure(config)
                 elif not config.desktop_profile:

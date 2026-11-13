@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import signal
+import sys
 from contextlib import aclosing, contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC
@@ -10,7 +11,6 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from platformdirs import user_data_path
 from rich.console import Console
 from sqlalchemy.exc import SQLAlchemyError
 from yaml import YAMLError
@@ -18,11 +18,11 @@ from yaml import YAMLError
 from echoscope.application.config import Job, read_config
 from echoscope.application.engine import Radar, validate_config
 from echoscope.application.ports import ConnectorError, Request, StorageUnavailable
-from echoscope.bootstrap import registry
+from echoscope.bootstrap import create_store, registry
 from echoscope.connectors.syndication import parse_date
 from echoscope.domain.models import HistoryQuery, Severity, State
 from echoscope.domain.rules import evaluate
-from echoscope.storage.sqlite import Store
+from echoscope.settings import load_environment, runtime_settings
 
 from .render import display, line
 
@@ -35,19 +35,29 @@ data_app = typer.Typer(no_args_is_help=True)
 app.add_typer(config_app, name="config")
 app.add_typer(job_app, name="job")
 app.add_typer(data_app, name="data")
-DEFAULT_DIR = user_data_path("EchoScopeRadar", appauthor=False)
 
 
 @app.callback()
 def options(
     ctx: typer.Context,
     db: Annotated[Path | None, typer.Option(help="Ruta de SQLite local.")] = None,
+    database_url: Annotated[
+        str | None, typer.Option(help="URL del adaptador de persistencia.")
+    ] = None,
+    env_file: Annotated[Path | None, typer.Option(help="Archivo de entorno explícito.")] = None,
 ):
-    ctx.obj = db
+    load_environment(env_file)
+    if db and database_url:
+        raise ValueError("Elegí --db o --database-url.")
+    ctx.obj = db or database_url
 
 
 def _store(ctx, demo=False):
-    return Store(ctx.obj or DEFAULT_DIR / ("demo.sqlite" if demo else "radar.sqlite"))
+    settings = runtime_settings()
+    target = ctx.obj or (
+        settings.data_dir / "demo.sqlite" if demo else settings.database_target("radar.sqlite")
+    )
+    return create_store(target)
 
 
 def _config(path, connectors=None):
@@ -223,12 +233,10 @@ def doctor(
                 raise ValueError("La base no tiene configuración activa")
             connectors = registry()
             validate_config(config, connectors)
-            writer = store._lock
-            try:
-                with writer:
-                    typer.echo("SQLite accesible · bloqueo disponible")
-            except TimeoutError:
-                typer.echo("SQLite accesible · escritor activo")
+            if store.writer_available():
+                typer.echo("Almacenamiento accesible · bloqueo disponible")
+            else:
+                typer.echo("Almacenamiento accesible · escritor activo")
                 if network:
                     raise ValueError("Detené el motor antes de probar una fuente") from None
             for source in config.sources:
@@ -350,6 +358,9 @@ class JsonLog(logging.Formatter):
 
 
 def main():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     handler = logging.StreamHandler()
     handler.setFormatter(JsonLog())
     logging.getLogger("echoscope").addHandler(handler)
@@ -367,7 +378,7 @@ def main():
     ) as error:
         if isinstance(error, (SQLAlchemyError, YAMLError)):
             detail = (
-                "SQLite inaccesible o esquema incompatible"
+                "Almacenamiento inaccesible o esquema incompatible"
                 if isinstance(error, SQLAlchemyError)
                 else "YAML inválido"
             )

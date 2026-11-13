@@ -9,7 +9,6 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from urllib.parse import urlsplit
 
-from platformdirs import user_data_path
 from pydantic import ValidationError
 
 from echoscope.application.administration import (
@@ -21,6 +20,7 @@ from echoscope.application.administration import (
 )
 from echoscope.application.ports import AuthRequired, ConnectorError, StorageUnavailable
 from echoscope.domain.models import HistoryQuery, Kind, State
+from echoscope.settings import load_environment
 
 from .palette import paint
 from .render import safe
@@ -826,9 +826,13 @@ def main():
     parser = argparse.ArgumentParser(description="EchoScope Radar para personal administrativo")
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--db", type=Path)
+    parser.add_argument("--env-file", type=Path)
     args = parser.parse_args()
-    path = args.db or user_data_path("EchoScopeRadar", appauthor=False) / (
-        "practica.sqlite" if args.demo else "administracion.sqlite"
+    settings = load_environment(args.env_file)
+    path = args.db or (
+        settings.data_dir / "practica.sqlite"
+        if args.demo
+        else settings.database_target("administracion.sqlite")
     )
     root = tk.Tk()
     root.iconphoto(

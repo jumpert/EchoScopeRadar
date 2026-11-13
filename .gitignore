@@ -9,3 +9,6 @@ dist/
 *.sqlite*
 *.writer.lock
 .env
+.env.*
+!.env.example
+.nenv

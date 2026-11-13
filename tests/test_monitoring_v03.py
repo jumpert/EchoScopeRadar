@@ -8,6 +8,7 @@ from echoscope.application.config import Credential, RuleSpec, Source
 from echoscope.application.ports import Request, SourceEnded, SourceWaiting
 from echoscope.connectors.press_feed import PressFeed
 from echoscope.connectors.youtube_channel import YouTubeChannel, YouTubeChannelLive
+from echoscope.domain.identity import alert_key
 from echoscope.domain.models import Batch, HistoryQuery, Kind, Message, Observation, State, utcnow
 from echoscope.domain.rules import Rule, evaluate
 from echoscope.storage.sqlite import Store
@@ -56,6 +57,13 @@ async def test_review_is_persisted_without_triggering_an_alert(tmp_path):
         assert reviewed[0].observation.message.text == "ejersito"
         assert confirmed[0].observation.message.text == "ejercit0"
         assert sum(event.kind == "AlertRaised" for event in await store.events()) == 1
+        key = alert_key(confirmed[0])
+        assert await store.reviewable_keys([key]) == {key}
+        await store.set_alert_reviews([key], "threat")
+        assert await store.alert_reviews([key]) == {key: "threat"}
+        await store.purge(snapshot.source.id)
+        assert await store.alert_reviews([key]) == {}
+        assert await store.reviewable_keys([key]) == set()
 
 
 def test_upgrade_preserves_edits_and_is_idempotent():

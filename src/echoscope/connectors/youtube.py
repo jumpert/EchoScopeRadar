@@ -18,6 +18,7 @@ from echoscope.application.ports import (
 )
 from echoscope.domain.models import Batch, Kind, Message
 
+from .http import bounded_json
 from .syndication import parse_date
 
 VIDEO_ENDPOINT = "https://www.googleapis.com/youtube/v3/videos"
@@ -96,7 +97,7 @@ class YouTubeLive:
                         raise RateLimited()
                     if response.status >= 500:
                         raise Transient()
-                    data = await response.json(content_type=None)
+                    data = await bounded_json(response)
                     reasons = {
                         item.get("reason") for item in data.get("error", {}).get("errors", [])
                     }

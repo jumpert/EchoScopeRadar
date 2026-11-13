@@ -15,6 +15,7 @@ from echoscope.application.ports import (
 )
 from echoscope.domain.models import Batch, Kind, Message
 
+from .http import bounded_json
 from .syndication import parse_date
 from .youtube import YouTubeParams, youtube_headers
 
@@ -77,7 +78,7 @@ async def _get(session, endpoint, params, headers):
                 raise RateLimited()
             if response.status >= 500:
                 raise Transient()
-            data = await response.json(content_type=None)
+            data = await bounded_json(response)
             reasons = {item.get("reason") for item in data.get("error", {}).get("errors", [])}
             if reasons & {
                 "quotaExceeded",

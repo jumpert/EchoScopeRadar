@@ -92,7 +92,8 @@ async def test_https_accounts_isolate_credentials_and_alert_reviews(tmp_path, mo
             await client.post(
                 "/api/alert-review", json={"keys": [key], "state": "threat"}, headers=a_headers, **a
             )
-        ).status == 200
+        ).status == 400
+        await accounts.workspaces["alice"].service.store.set_alert_reviews([key], "threat")
         assert await accounts.workspaces["alice"].service.store.alert_reviews([key]) == {
             key: "threat"
         }
