@@ -118,8 +118,24 @@
       </div>
     </section>
     <section id="database-page" role="tabpanel" aria-labelledby="tab-database" class="settings-page" hidden>
+      <section class="card storage-card" aria-label="Capacidad y mantenimiento">
+        <h2>Almacenamiento y mantenimiento</h2>
+        <p id="storage-summary" role="status">Consultando la base activa…</p>
+        <p>Archivo de la base activa: <code id="storage-path">—</code> <button type="button" id="storage-copy" class="text-button">Copiar ruta</button></p>
+        <p id="storage-space" class="metadata"></p>
+        <button type="button" id="storage-refresh" class="button subtle">Actualizar capacidad</button>
+        <details class="inline-guide"><summary>Consultar con DBeaver u otro gestor</summary><p>Creá una conexión SQLite y seleccioná el archivo indicado arriba. La vista <strong>capturas</strong> muestra fecha, fuente, tipo, título, autor, texto, enlace y coincidencias. También podés consultar message_sources, message_versions y alerts. Para inspeccionar, usá una conexión de solo lectura. No abras los archivos auxiliares -wal o -shm como si fueran bases.</p></details>
+        <form id="storage-cleanup-form" class="storage-cleanup">
+          <label>Conservar los últimos días <input id="storage-days" type="number" min="1" max="3650" value="30" required></label>
+          <label><input id="storage-unmatched" type="checkbox" checked> Conservar todos los registros con coincidencias, incluidas las pendientes de revisión</label>
+          <button type="submit" class="button subtle">Previsualizar limpieza</button>
+        </form>
+        <p class="metadata">La limpieza elimina capturas anteriores al plazo elegido y su historial técnico huérfano. No cambia tus fuentes ni palabras blancas. La captura se pausa brevemente durante la limpieza y vuelve a su estado anterior. La retención automática de cada fuente sigue vigente.</p>
+        <p id="storage-status" role="status" aria-live="polite"></p>
+      </section>
+      <dialog id="storage-confirm-dialog"><h2>Confirmar limpieza</h2><p id="storage-preview"></p><p>Se eliminarán definitivamente esos registros y sus alertas asociadas. Podés exportar la consulta antes de continuar. Esta acción no se puede deshacer.</p><button type="button" id="storage-confirm" class="button">Eliminar datos antiguos</button><button type="button" data-close="storage-confirm-dialog" class="button subtle">Cancelar</button></dialog>
       <div class="section-heading"><div><p class="eyebrow">HISTORIAL ALMACENADO · SOLO LECTURA</p><h1>Base de datos</h1><p>Consultá noticias y comentarios guardados y descargá los resultados de tu cuenta.</p></div></div>
-      <details class="inline-guide"><summary>¿Cómo hago una consulta?</summary><ol><li>Elegí fechas, una fuente o palabras del contenido. Podés combinar varios filtros.</li><li>Presioná Consultar. Abrí «Ver contenido» para leer el registro completo o usá Siguiente para avanzar.</li><li>Elegí Excel, CSV o PDF y presioná Exportar consulta. Se descargan todos los resultados del filtro, no solo esta página.</li></ol><p>No se modifica ni elimina información. Las fechas corresponden a la captura en UTC. Los chats conservados solo durante la sesión y las vistas previas no aparecen aquí. La retención puede eliminar datos antiguos. El tono es una estimación automática, no una verificación humana.</p><p>Hasta 5.000 registros o 20 MB por exportación; PDF hasta 1.000. Si se supera el límite, acotá los filtros. No se exportan claves ni contraseñas.</p></details>
+      <details class="inline-guide"><summary>¿Cómo hago una consulta?</summary><ol><li>Elegí fechas, una fuente o palabras del contenido. Podés combinar varios filtros.</li><li>Presioná Consultar. Abrí «Ver contenido» para leer el registro completo o usá Siguiente para avanzar.</li><li>Elegí Excel, CSV o PDF y presioná Exportar consulta. Se descargan todos los resultados del filtro, no solo esta página.</li></ol><p>No se modifica ni elimina información. Las fechas corresponden a la captura en UTC. Las vistas previas y los conectores de solo sesión no aparecen aquí. Los chats de YouTube sí se guardan. La retención puede eliminar datos antiguos. El tono es una estimación automática, no una verificación humana.</p><p>Hasta 5.000 registros o 20 MB por exportación; PDF hasta 1.000. Si se supera el límite, acotá los filtros. No se exportan claves ni contraseñas.</p></details>
       <form id="database-form" class="database-filters card">
         <label>Palabras en el contenido<input id="db-text" type="search" maxlength="200" placeholder="Ejemplo: defensa"></label>
         <label>Fuente<select id="db-source"><option value="">Todas las fuentes</option></select></label>
@@ -137,6 +153,7 @@
     </section>
   </main>
 
+  <dialog id="exit-dialog"><h2>Cerrar EchoScope Radar</h2><p>La aplicación quedará en segundo plano y seguirá capturando. Podés cerrar esta pestaña.</p><button type="button" id="keep-background">Confirmar segundo plano</button><button type="button" id="exit-confirm">Salir y detener captura</button></dialog>
   <footer class="statusbar"><span id="status" role="status" aria-live="polite">Preparando la mesa…</span><span id="updated"></span><span id="account-name" hidden></span><button type="button" id="logout" class="text-button" hidden>Cerrar sesión</button><button type="button" id="shutdown" class="text-button">Cerrar EchoScope</button></footer>
 
   <dialog id="help-dialog" aria-labelledby="help-title">
@@ -191,7 +208,7 @@
       <input type="hidden" id="source-parent">
       <label for="source-name">Nombre visible</label><input id="source-name" maxlength="80" required>
       <label for="source-type">Tipo de fuente</label><select id="source-type" required></select>
-      <label for="source-tracking">Modalidad de seguimiento</label><select id="source-tracking"><option value="topic">Por tema · títulos relacionados</option><option value="owned">Cuenta propia · seguimiento permanente</option></select>
+      <label for="source-tracking">Modalidad de seguimiento</label><select id="source-tracking"><option value="all">Todas las publicaciones y sus comentarios</option><option value="topic">Por tema · títulos relacionados</option><option value="owned">Cuenta propia · seguimiento permanente</option></select>
       <details class="inline-guide"><summary>Cómo registrar una cuenta propia</summary><ol><li>Elegí la plataforma o el tipo de fuente y pegá el enlace del canal o página que administrás.</li><li>En YouTube, usá el enlace /channel/ID o el @nombre del canal. La aplicación resuelve el recurso al consultar.</li><li>Elegí Cuenta propia y guardá. Esta declaración permite consultar publicaciones aunque su título no contenga palabras de la lista.</li><li>En Claves API, cargá el acceso correspondiente. Las plataformas con acceso pendiente quedan registradas y desactivadas hasta tener conector y permisos.</li><li>En servidor, Iniciar seguimiento guarda la intención de captura. Se recupera al reiniciar y continúa al cerrar sesión.</li></ol><p>La propiedad es declarada por vos. El estado de la última consulta indica si la aplicación pudo acceder al recurso.</p></details>
       <label for="source-resource-id">Identificador de la página o canal (opcional para accesos pendientes)</label><input id="source-resource-id" maxlength="256">
       <label for="source-comment-provider">Comentarios incrustados</label><select id="source-comment-provider"><option value="">Detección automática · Disqus usa la clave activa si está disponible</option><option value="disqus">Disqus · asociar la clave activa de Claves API</option></select>

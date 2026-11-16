@@ -18,11 +18,14 @@ def _site(url):
 
 
 class PressFeed:
+    def publications(self, request):
+        return Feed().poll(request)
+
     async def poll(self, request: Request):
         state = json.loads(request.checkpoint or "{}")
         targets = state.setdefault("targets", {})
         feed_url = request.source.params["url"]
-        async with aclosing(Feed().poll(replace(request, checkpoint=state.get("main")))) as reader:
+        async with aclosing(self.publications(replace(request, checkpoint=state.get("main")))) as reader:
             async for batch in reader:
                 state["main"] = batch.checkpoint
                 for item in batch.messages:
@@ -183,11 +186,15 @@ class PressFeed:
                     target["api_failed"] = True
                 issues.append(exc.label if isinstance(exc, ConnectorError) else "TIEMPO AGOTADO")
         state["api_offset"] = api_start + min(request.source.resources_per_cycle, len(api_targets))
+        unreadable = sum(not target.get("mechanisms") and not target.get("feed")
+                         for target in targets.values() if target.get("discussion_checked"))
         detail = (
             "COMENTARIOS · " + " · ".join(dict.fromkeys(issues))
             if issues
             else "SIN ACCESO A COMENTARIOS"
             if targets and not active and not api_targets
+            else f"{unreadable} NOTAS SIN MECANISMO DE COMENTARIOS COMPATIBLE"
+            if unreadable
             else None
         )
         yield Batch((), json.dumps(state), bool(issues), detail=detail)

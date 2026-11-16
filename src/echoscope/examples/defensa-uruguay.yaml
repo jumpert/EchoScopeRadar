@@ -1,20 +1,28 @@
 version: 1
-desktop_profile: 2
+desktop_profile: 3
 sources:
   - id: telenoche
     type: press_feed
-    label: Telenoche · Nacionales
+    tracking: all
+    resources_per_cycle: 10
+    label: Canal 4 · Telenoche · Nacionales
     params: {url: 'https://www.telenoche.com.uy/rss/pages/nacionales.xml', kind: NEWS_ARTICLE}
   - id: subrayado
     type: press_feed
+    tracking: all
+    resources_per_cycle: 10
     label: Subrayado · Nacional
     params: {url: 'https://www.subrayado.com.uy/rss/pages/nacional.xml', kind: NEWS_ARTICLE}
   - id: montevideo-portal
     type: press_feed
+    tracking: all
+    resources_per_cycle: 10
     label: Montevideo Portal · Noticias
     params: {url: 'https://www.montevideo.com.uy/anxml.aspx?59', kind: NEWS_ARTICLE}
   - id: el-observador
     type: press_feed
+    tracking: all
+    resources_per_cycle: 10
     label: El Observador · Nacional
     params: {url: 'https://www.elobservador.com.uy/rss/pages/nacional.xml', kind: NEWS_ARTICLE}
   - id: ejercito-youtube
@@ -25,19 +33,27 @@ sources:
     retention_days: 7
   - id: la-diaria
     type: press_feed
+    tracking: all
+    resources_per_cycle: 10
     label: la diaria
     params: {url: 'https://ladiaria.com.uy/feeds/articulos/', kind: NEWS_ARTICLE}
   - id: brecha
     type: press_feed
+    tracking: all
+    resources_per_cycle: 10
     label: Brecha
     params: {url: 'https://brecha.com.uy/feed/', kind: NEWS_ARTICLE}
   - id: caras-caretas
     type: press_feed
+    tracking: all
+    resources_per_cycle: 10
     label: Caras y Caretas
     params: {url: 'https://www.carasycaretas.com.uy/rss/pages/home.xml', kind: NEWS_ARTICLE}
   - id: teledoce
     type: press_feed
-    label: Teledoce
+    tracking: all
+    resources_per_cycle: 10
+    label: Tele12 · Telemundo
     params: {url: 'https://www.teledoce.com/feed/', kind: NEWS_ARTICLE}
   - id: vtv-youtube
     type: youtube_channel
@@ -47,14 +63,40 @@ sources:
     retention_days: 7
   - id: ejercito-directos
     type: youtube_channel_live
+    retention_days: 7
     label: Ejército del Uruguay · Directos
     params: {channel: UCeeEsGE06kae6DF-yOGT9Tw}
     credential: {kind: api_key, env: ECHOSCOPE_YOUTUBE_KEY}
   - id: vtv-directos
     type: youtube_channel_live
+    retention_days: 7
     label: VTV Noticias · Directos
     params: {channel: UCdW5hWEhQqexGEApXjBqQrQ}
     credential: {kind: api_key, env: ECHOSCOPE_YOUTUBE_KEY}
+  - id: el-pais
+    type: press_page
+    label: El País Uruguay
+    tracking: all
+    resources_per_cycle: 10
+    params: {url: 'https://www.elpais.com.uy/', kind: NEWS_ARTICLE}
+  - id: medios-publicos
+    type: press_page
+    label: Medios Públicos · Canal 5
+    tracking: all
+    resources_per_cycle: 10
+    params: {url: 'https://mediospublicos.uy/', kind: NEWS_ARTICLE}
+  - id: radio-montecarlo
+    type: press_page
+    label: Radio Monte Carlo
+    tracking: all
+    resources_per_cycle: 10
+    params: {url: 'https://www.radiomontecarlo.com.uy/', kind: NEWS_ARTICLE}
+  - id: cw33-florida
+    type: press_page
+    label: CW33 Florida
+    tracking: all
+    resources_per_cycle: 10
+    params: {url: 'https://www.cw33florida.com.uy/', kind: NEWS_ARTICLE}
 jobs:
   - {id: telenoche, source: telenoche, interval_s: 900, rule_set: defensa, relevant_only: true}
   - {id: subrayado, source: subrayado, interval_s: 900, rule_set: defensa, relevant_only: true}
@@ -68,6 +110,10 @@ jobs:
   - {id: vtv-youtube, source: vtv-youtube, interval_s: 1800, rule_set: defensa}
   - {id: ejercito-directos, source: ejercito-directos, interval_s: 3600, rule_set: defensa}
   - {id: vtv-directos, source: vtv-directos, interval_s: 3600, rule_set: defensa}
+  - {id: el-pais, source: el-pais, interval_s: 900, timeout_s: 30, rule_set: defensa}
+  - {id: medios-publicos, source: medios-publicos, interval_s: 900, timeout_s: 30, rule_set: defensa}
+  - {id: radio-montecarlo, source: radio-montecarlo, interval_s: 900, timeout_s: 30, rule_set: defensa}
+  - {id: cw33-florida, source: cw33-florida, interval_s: 900, timeout_s: 30, rule_set: defensa}
 rule_sets:
   defensa:
     - {id: mdn, phrase: Ministerio de Defensa, severity: important, detect_variants: true}

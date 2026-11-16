@@ -218,7 +218,7 @@ async def test_youtube_grpc_reconnect_and_terminal_states(live_fixture):
     assert seen[:2] == [("", "test-key"), ("next", "test-key")]
 
 
-async def test_youtube_is_session_only(tmp_path, live_fixture):
+async def test_youtube_chat_survives_restart(tmp_path, live_fixture):
     source, seen = live_fixture
     config = demo_config()
     config.sources = [source]
@@ -232,12 +232,13 @@ async def test_youtube_is_session_only(tmp_path, live_fixture):
         try:
             await until(lambda: len(seen) >= 2 and not radar.tasks)
             assert len(await radar.messages(HistoryQuery(job_id="comentarios"))) == 1
-            assert not await store.messages(HistoryQuery())
-            assert (await store.snapshots())["comentarios"].checkpoint is None
+            assert len(await store.messages(HistoryQuery())) == 1
+            assert (await store.snapshots())["comentarios"].checkpoint is not None
         finally:
             radar.stop()
             await worker
-    assert b"Demora privada" not in path.read_bytes()
+    async with Store(path).opened() as reopened:
+        assert len(await reopened.messages(HistoryQuery())) == 1
 
 
 @pytest.mark.internet

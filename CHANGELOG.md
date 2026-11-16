@@ -1,5 +1,32 @@
 # Historial de versiones
 
+## 0.15.0
+
+- Instalador de inicio automático Windows por cuenta, con tarea al iniciar sesión y alternativa de Inicio de Windows si faltan permisos.
+- Distribución Linux x86_64 con instalador systemd para arranque del sistema bajo un usuario sin privilegios.
+- Configuración persistente instalacion.env fuera de la carpeta versionada; los accesos interactivos y el proceso de inicio usan la misma configuración.
+- Distribuciones comprimidas separadas para Windows y Linux, compiladas en sus sistemas respectivos. Documentación de dominio, interfaz y puerto.
+
+## 0.14.2
+
+- Ejecución local solamente en navegador: se elimina la ventana de control. Cerrar el navegador mantiene el motor; volver a abrir la aplicación reutiliza la instancia de la misma base y puerto.
+- Base de datos muestra la ruta real, capturas, mensajes, alertas, tamaño del archivo y WAL/SHM, espacio reutilizable y disco disponible.
+- Limpieza por antigüedad con previsualización, protección predeterminada de coincidencias y compactación. El motor recupera su estado previo tras el mantenimiento.
+- Vista SQLite `capturas` para consulta externa en DBeaver y otros gestores. Guía con la ubicación comprobada y conteos de la instalación real.
+
+## 0.14.1
+
+- Cierre simplificado: un único aviso para confirmar segundo plano o salir, sin notificación posterior. El botón Salir de la ventana de control detiene directamente la captura.
+
+## 0.14.0
+
+- Comentarios públicos de Montevideo Portal con paginación, autor y noticia de origen; redirecciones HTTPS validadas e identificación del lector.
+- Modalidad para seguir todas las publicaciones y detectar términos introducidos solo en los comentarios; ampliación del perfil a 12 medios sin reemplazar las reglas existentes.
+- Portadas HTML para El País, Medios Públicos, Radio Monte Carlo y CW33 Florida. Acceso Arena identificado como pendiente.
+- Ventana de control Windows y opciones de segundo plano, salida o cancelación. Cerrar el navegador ya no detiene el motor por inactividad.
+- Chats de YouTube persistidos y registros de actividad con rotación en disco.
+- Auditoría individual de 16 medios con datos comprobados, limitaciones y accesos pendientes.
+
 ## 0.13.0
 
 - Pestaña Base de datos: consulta visual de registros persistidos con filtros combinables, contenido completo y paginación estable de 50 filas.

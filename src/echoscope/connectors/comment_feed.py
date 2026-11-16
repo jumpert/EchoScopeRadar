@@ -1,11 +1,8 @@
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
 
-import aiohttp
-
-from echoscope.application.ports import ConnectorError, Forbidden, Transient
-
-from .syndication import PublicResolver, public_url
+from .discussion import public_get
+from .syndication import public_url
 
 
 class CommentFeedLinks(HTMLParser):
@@ -42,37 +39,8 @@ class CommentFeedLinks(HTMLParser):
 
 async def discover_discussion_feeds(page):
     parser = CommentFeedLinks(public_url(page))
-    try:
-        async with (
-            aiohttp.ClientSession(
-                connector=aiohttp.TCPConnector(resolver=PublicResolver(), use_dns_cache=False),
-                cookie_jar=aiohttp.DummyCookieJar(),
-                trust_env=False,
-                timeout=aiohttp.ClientTimeout(total=12),
-            ) as session,
-            session.get(
-                page,
-                allow_redirects=False,
-                headers={"Accept": "text/html", "User-Agent": "EchoScopeRadar/0.2"},
-            ) as response,
-        ):
-            if response.status in {401, 403}:
-                raise Forbidden()
-            if response.status >= 500:
-                raise Transient()
-            if response.status != 200 or response.content_type not in {
-                "text/html",
-                "application/xhtml+xml",
-            }:
-                raise ConnectorError()
-            header = bytearray()
-            async for chunk in response.content.iter_chunked(8192):
-                header.extend(chunk)
-                if b"</head" in header.lower() or len(header) >= 256 * 1024:
-                    break
-    except (aiohttp.ClientError, TimeoutError):
-        raise Transient() from None
-    parser.feed(bytes(header[: 256 * 1024]).decode("utf-8", errors="replace").split("</head", 1)[0])
+    body = await public_get(page, json_body=False)
+    parser.feed(body[:256 * 1024].split("</head", 1)[0])
     return [(url, "PRESS_COMMENT") for url in parser.links] + [
         (url, "REVIEW") for url in parser.reviews
     ]

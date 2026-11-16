@@ -3,13 +3,20 @@
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from urllib.parse import parse_qs, urljoin, urlsplit
 
 import aiohttp
 
 from echoscope.application.config import Credential
-from echoscope.application.ports import AuthRequired, Forbidden, RateLimited, Transient
+from echoscope.application.ports import (
+    AuthRequired,
+    ConnectorError,
+    Forbidden,
+    RateLimited,
+    Transient,
+)
 from echoscope.domain.models import Kind, Message
 
 from .html_discussion import parse_discussion
@@ -45,6 +52,31 @@ async def public_get(url, *, params=None, json_body=True):
         raise Transient() from None
 
 
+async def public_read_post(url, data):
+    """Only the outlet's public, read-only comment-list procedure uses POST."""
+    if url != "https://www.montevideo.com.uy/ancomgetpag.aspx":
+        raise Forbidden()
+    try:
+        async with aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(resolver=PublicResolver(), use_dns_cache=False),
+            trust_env=False,
+            cookie_jar=aiohttp.DummyCookieJar(),
+            timeout=aiohttp.ClientTimeout(total=8),
+        ) as session:
+            async with session.post(
+                url, data=data, allow_redirects=False, headers={"User-Agent": "EchoScopeRadar/0.14"}
+            ) as response:
+                if response.status in {401, 403}:
+                    raise Forbidden()
+                if response.status == 429:
+                    raise RateLimited()
+                if response.status != 200:
+                    raise Transient()
+                return json.loads(await limited_bytes(response, 1024 * 1024))
+    except (aiohttp.ClientError, TimeoutError, ValueError):
+        raise Transient() from None
+
+
 async def _public_get(url, *, params=None, json_body=True):
     public_url(url)
     async with aiohttp.ClientSession(
@@ -53,7 +85,27 @@ async def _public_get(url, *, params=None, json_body=True):
         cookie_jar=aiohttp.DummyCookieJar(),
         timeout=aiohttp.ClientTimeout(total=8),
     ) as session:
-        async with session.get(url, params=params, allow_redirects=False) as response:
+        return await _get_response(session, url, params=params, json_body=json_body)
+
+
+async def _get_response(session, url, *, params=None, json_body=True):
+    for hop in range(4):
+        public_url(url)
+        async with session.get(
+            url,
+            params=params,
+            allow_redirects=False,
+            headers={"User-Agent": "EchoScopeRadar/0.14 (public news monitoring)"},
+        ) as response:
+            if response.status in {301, 302, 303, 307, 308}:
+                if hop == 3 or not response.headers.get("Location"):
+                    raise Transient()
+                target = public_url(urljoin(url, response.headers["Location"]))
+                if json_body and urlsplit(target).hostname != urlsplit(url).hostname:
+                    raise Forbidden()
+                url = target
+                params = None
+                continue
             if response.status == 401:
                 raise AuthRequired()
             if response.status == 403:
@@ -69,9 +121,11 @@ async def _public_get(url, *, params=None, json_body=True):
                     return json.loads(body), dict(response.headers)
                 except ValueError:
                     raise Transient() from None
-            return (await limited_bytes(response, 1024 * 1024, truncate=True)).decode(
-                "utf-8", errors="replace"
-            )
+            raw = await limited_bytes(response, 1024 * 1024, truncate=True)
+            try:
+                return raw.decode(response.charset or "utf-8", errors="replace")
+            except LookupError:
+                return raw.decode("utf-8", errors="replace")
 
 
 async def limited_bytes(response, limit, *, truncate=False):
@@ -90,6 +144,12 @@ async def discover_mechanisms(url):
     parser = DiscussionLinks(url)
     parser.feed(body)
     mechanisms = []
+    if "arena-comments-widget" in body:
+        mechanisms.append({"type": "unsupported", "provider": "Arena"})
+    if urlsplit(url).hostname == "www.montevideo.com.uy":
+        match = re.search(r"MVD\.CMS\.Comentarios\.init\s*\(\s*\{\s*UcId:\s*(\d+)", body)
+        if match:
+            mechanisms.append({"type": "montevideo", "post": match[1]})
     if parser.api and parser.post and urlsplit(parser.api).hostname == urlsplit(url).hostname:
         mechanisms.append(
             {
@@ -133,6 +193,48 @@ class DiscussionPage:
 
 
 async def read_mechanism(mechanism, *, article, title=None, cursor=None, credential=None):
+    if mechanism["type"] == "unsupported":
+        error = ConnectorError()
+        error.label = "COMENTARIOS ARENA · INTEGRACIÓN PENDIENTE"
+        raise error
+    if mechanism["type"] == "montevideo":
+        if urlsplit(article).hostname != "www.montevideo.com.uy":
+            raise Forbidden()
+        page = max(1, int(cursor or 1))
+        data = await public_read_post(
+            "https://www.montevideo.com.uy/ancomgetpag.aspx",
+            {"uc": mechanism["post"], "pag": str(page), "order": "F"},
+        )
+        if not isinstance(data, dict) or not isinstance(data.get("coms"), list):
+            raise Transient()
+        messages = []
+        for row in data["coms"][:100]:
+            if not row.get("id") or not row.get("txt"):
+                continue
+            try:
+                published = datetime.strptime(row.get("date", ""), "%d/%m/%Y %H:%M:%S").replace(
+                    tzinfo=timezone(timedelta(hours=-3))
+                )
+            except ValueError:
+                published = None
+            messages.append(
+                Message(
+                    Kind.PRESS_COMMENT,
+                    "montevideo:" + mechanism["post"],
+                    str(row["id"]),
+                    article,
+                    _plain(row["txt"])[:65536],
+                    row.get("nick"),
+                    author_id=str(row["usr"]) if row.get("usr") else None,
+                    url=article + "#comment" + str(row["id"]),
+                    published_at=published,
+                    resource_title=title,
+                )
+            )
+        next_page = str(page + 1) if page < int(data.get("cantPag", 1)) else None
+        return DiscussionPage(
+            tuple(messages), next_page, bool(next_page) or len(data["coms"]) > 100
+        )
     if mechanism["type"] == "html":
         body = await public_get(article, json_body=False)
         try:

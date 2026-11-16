@@ -20,6 +20,7 @@ from .secrets import secrets_for_request
 YOUTUBE_KEY = "ECHOSCOPE_YOUTUBE_KEY"
 RULE_SET = "defensa"
 SOURCE_TYPES = {
+    "Noticias de un sitio (página web)": ("press_page", "NEWS_ARTICLE"),
     "Noticias de un sitio (RSS)": ("press_feed", "NEWS_ARTICLE"),
     "Comentarios de un sitio (RSS)": ("syndication", "PRESS_COMMENT"),
     "Reseñas de un sitio (RSS/Atom)": ("syndication", "REVIEW"),
@@ -31,6 +32,7 @@ SOURCE_TYPES = {
     "Canal de YouTube · directos automáticos": ("youtube_channel_live", "LIVE_CHAT"),
 }
 RSS_TYPES = {"syndication", "press_feed"}
+WEB_TYPES = RSS_TYPES | {"press_page"}
 SOURCE_TYPES.update(
     {
         f"{platform} · acceso pendiente": ("pending_social", "SOCIAL_COMMENT")
@@ -88,7 +90,7 @@ def upgrade_desktop_profile(config):
 
 
 def expand_national_profile(config):
-    if config.desktop_profile == 2 or RULE_SET not in config.rule_sets:
+    if config.desktop_profile in {2, 3} or RULE_SET not in config.rule_sets:
         return config
     if not {"telenoche", "subrayado", "montevideo-portal", "el-observador"}.intersection(
         source.id for source in config.sources
@@ -111,6 +113,30 @@ def expand_national_profile(config):
             "jobs": [*config.jobs, *(job for job in preset.jobs if job.source in ids)],
         }
     )
+
+
+def expand_press_coverage(config):
+    if config.desktop_profile == 3 or RULE_SET not in config.rule_sets:
+        return config
+    if not {"telenoche", "subrayado", "montevideo-portal"}.intersection(s.id for s in config.sources):
+        return config
+    preset = _example("defensa-uruguay.yaml")
+    known = {item.id for item in (*config.sources, *config.jobs)}
+    urls = {s.params.get("url") for s in config.sources}
+    sources = [s for s in config.sources]
+    # Keep explicit topic/owned choices on user sources. The bundled press profile now
+    # follows every publication so a reader can introduce a topic absent from its title.
+    bundled = {s.id: s for s in preset.sources}
+    sources = [s.model_copy(update={"tracking": "all", "resources_per_cycle": 10})
+               if s.id in bundled and s.type in {"press_feed", "press_page"}
+               and s.params == bundled[s.id].params and s.tracking == "topic" else s
+               for s in sources]
+    added = [s for s in preset.sources if s.id not in known and s.params.get("url") not in urls]
+    ids = {s.id for s in added}
+    return config.model_copy(update={
+        "desktop_profile": 3, "sources": [*sources, *added],
+        "jobs": [*config.jobs, *(j for j in preset.jobs if j.source in ids)],
+    })
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,12 +162,12 @@ class SourceForm:
             30
             if connector == "youtube_channel_live"
             else 5
-            if connector in {"youtube_comments", "youtube_channel"}
+            if connector in {"youtube_comments", "youtube_channel", "press_page"}
             else 1
         )
         if not minimum <= self.minutes <= 1440:
             raise ValueError(f"Elegí un intervalo entre {minimum} y 1440 minutos para esta fuente.")
-        if connector in RSS_TYPES:
+        if connector in WEB_TYPES:
             try:
                 endpoint = public_url(self.address.strip())
             except ValueError:
@@ -151,7 +177,7 @@ class SourceForm:
             params = {"url": endpoint, "kind": kind}
             credential = (
                 Credential(kind="bearer", env=self.token_env.strip())
-                if self.token_env.strip()
+                if self.token_env.strip() and connector in RSS_TYPES
                 else None
             )
         elif connector == "pending_social":
@@ -172,15 +198,15 @@ class SourceForm:
             credential = Credential(kind="api_key", env=YOUTUBE_KEY)
         if previous and previous.type == connector:
             params = previous.params | params
-            if connector not in RSS_TYPES and previous.credential:
+            if connector not in WEB_TYPES and previous.credential:
                 credential = previous.credential
-        if connector in RSS_TYPES:
+        if connector in WEB_TYPES:
             if self.resource_url and kind == "REVIEW":
                 params["resource_url"] = public_url(self.resource_url)
             elif kind != "REVIEW" or (previous and previous.params.get("url") != endpoint):
                 params.pop("resource_url", None)
         retention = previous.retention_days if previous else 30
-        if connector in {"youtube_comments", "youtube_channel"}:
+        if connector in {"youtube_comments", "youtube_channel", "youtube_live", "youtube_channel_live"}:
             retention = min(retention, 7)
         source = Source(
             id=identifier,
@@ -237,7 +263,7 @@ class Administration:
                         else _example("demo.yaml" if self.practice else "defensa-uruguay.yaml")
                     )
                     if custom and not self.practice:
-                        config = config.model_copy(update={"desktop_profile": 2})
+                        config = config.model_copy(update={"desktop_profile": 3})
                     validate_config(config, self.connectors)
                     await self.store.configure(config)
                 elif not config.desktop_profile:
@@ -267,6 +293,10 @@ class Administration:
                     not self.practice
                     and (expanded := expand_national_profile(config)) is not config
                 ):
+                    config = Configuration.model_validate(expanded.model_dump())
+                    validate_config(config, self.connectors)
+                    await self.store.configure(config)
+                if not self.practice and (expanded := expand_press_coverage(config)) is not config:
                     config = Configuration.model_validate(expanded.model_dump())
                     validate_config(config, self.connectors)
                     await self.store.configure(config)
@@ -317,6 +347,16 @@ class Administration:
             else:
                 await self.store.set_desktop_setting("monitoring_enabled", "false")
                 await self._stop()
+
+    async def cleanup_data(self, plan):
+        async with self.guard:
+            restart = bool(self.worker)
+            await self._stop()
+            try:
+                return await self.store.cleanup_before(plan)
+            finally:
+                if restart:
+                    await self._start()
 
     async def snapshot(self, query):
         radar = self.radar

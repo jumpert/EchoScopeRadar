@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import hashlib
 import hmac
 import json
 import logging
@@ -14,7 +15,7 @@ import sys
 import webbrowser
 from bisect import bisect_left, bisect_right
 from dataclasses import asdict, replace
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from importlib.metadata import version
 from importlib.resources import files
 from pathlib import Path
@@ -91,7 +92,7 @@ class SourceInput(StrictModel):
     relevant_only: bool = False
     token: str = Field(default="", max_length=4096)
     resource_url: str | None = Field(default=None, max_length=2048)
-    tracking: Literal["topic", "owned"] = "topic"
+    tracking: Literal["topic", "all", "owned"] = "topic"
     resource_id: str | None = Field(default=None, max_length=256)
     comment_provider: Literal["disqus"] | None = None
 
@@ -163,6 +164,15 @@ class ReviewInput(StrictModel):
     keys: list[str] = Field(min_length=1, max_length=500)
 
 
+class CleanupInput(StrictModel):
+    keep_days: int = Field(default=30, ge=1, le=3650)
+    only_unmatched: bool = True
+
+
+class CleanupConfirmation(StrictModel):
+    token: str = Field(min_length=64, max_length=64)
+
+
 class Workspace:
     def __init__(self, path, practice, auto_start, *, username=None, cipher=None):
         self.service = Administration(path, practice)
@@ -183,6 +193,7 @@ class Workspace:
         self.closed = asyncio.Event()
         self.last_seen = monotonic()
         self.config = None
+        self.cleanup_preview = None
 
     async def open(self):
         scope = account_secrets.set(self.secrets)
@@ -212,7 +223,7 @@ class Workspace:
 
 KEY = web.AppKey("workspace", Workspace)
 ACCOUNTS = web.AppKey("accounts", Accounts)
-LOG = logging.getLogger(__name__)
+LOG = logging.getLogger("echoscope.presentation.web")
 
 
 def error(message, status):
@@ -453,7 +464,7 @@ def source_categories(source):
         return ["social"]
     if source.type == "bluesky_thread":
         return ["social"]
-    if source.type == "press_feed":
+    if source.type in {"press_feed", "press_page"}:
         return ["news", "press", "reviews"]
     if source.type in {"youtube_live", "youtube_channel_live", "sim_live"}:
         return ["live"]
@@ -558,6 +569,8 @@ async def bootstrap(request):
             ),
             "source_groups": SOURCE_GROUPS,
             "version": version("echoscope-radar"),
+            "workspace_id": database_identity(state.service.store.path)
+            if not state.username and hasattr(state.service.store, "path") else None,
         }
     )
 
@@ -922,6 +935,36 @@ async def action(request):
         )
     elif name == "report":
         return await export_report(state, ReportInput.model_validate(data))
+    elif name == "data-storage":
+        if not callable(getattr(service.store, "database_stats", None)):
+            raise ValueError("Este adaptador no ofrece información de capacidad.")
+        result = await service.store.database_stats()
+        result["retention_days"] = sorted({source.retention_days for source in state.config.sources})
+        if state.username:
+            result["path"] = None
+            result["disk_free_bytes"] = result["disk_total_bytes"] = None
+        return web.json_response(result)
+    elif name == "data-cleanup-preview":
+        fields = CleanupInput.model_validate(data)
+        if not callable(getattr(service.store, "cleanup_plan", None)):
+            raise ValueError("Este adaptador no ofrece limpieza de datos.")
+        cutoff = (datetime.now(UTC) - timedelta(days=fields.keep_days)).isoformat()
+        plan = await service.store.cleanup_plan(cutoff, fields.only_unmatched)
+        token = secrets.token_hex(32)
+        state.cleanup_preview = (token, monotonic() + 300, plan)
+        return web.json_response({**plan, "token": token})
+    elif name == "data-cleanup-confirm":
+        fields = CleanupConfirmation.model_validate(data)
+        if state.report_guard.locked():
+            raise ValueError("Hay una consulta o limpieza en curso. Esperá a que termine.")
+        async with state.report_guard:
+            preview = state.cleanup_preview
+            if (not preview or preview[1] < monotonic()
+                    or not secrets.compare_digest(fields.token, preview[0])):
+                raise ValueError("La vista previa venció o cambió. Volvé a previsualizar la limpieza.")
+            state.cleanup_preview = None
+            result = await service.cleanup_data(preview[2])
+        return web.json_response(result)
     elif name in {"data-query", "data-export"}:
         fields = DataQuery.model_validate(data)
         if state.report_guard.locked():
@@ -1164,7 +1207,49 @@ def create_app(path, *, practice=False, auto_start=True, accounts=None):
     return app
 
 
+def database_identity(target):
+    from sqlalchemy.engine import make_url
+
+    value = str(target)
+    if "://" in value:
+        url = make_url(value)
+        if url.get_backend_name() != "sqlite":
+            return None
+        value = url.database
+    return hashlib.sha256(os.path.normcase(str(Path(value).resolve())).encode()).hexdigest()
+
+
+async def reopen_existing(path, *, practice, port, bind):
+    expected = database_identity(path)
+    if not port or not expected:
+        return None
+    host = f"[{bind}]" if ":" in bind else bind
+    url = f"http://{host}:{port}/"
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2),
+                                         trust_env=False) as session:
+            async with session.get(url + "api/bootstrap", allow_redirects=False) as response:
+                if response.status != 200:
+                    return None
+                body = bytearray()
+                async for chunk in response.content.iter_chunked(8192):
+                    body.extend(chunk)
+                    if len(body) > 1024 * 1024:
+                        return None
+                data = json.loads(body)
+                if (isinstance(data, dict) and data.get("workspace_id") == expected
+                        and data.get("practice") is practice and data.get("version")):
+                    return url
+    except (aiohttp.ClientError, TimeoutError, ValueError, TypeError):
+        pass
+    return None
+
+
 async def serve(path, *, practice, port, browser, bind="127.0.0.1"):
+    if existing := await reopen_existing(path, practice=practice, port=port, bind=bind):
+        if browser:
+            await asyncio.to_thread(webbrowser.open, existing)
+        return
     app = create_app(path, practice=practice)
     state = app[KEY]
     settings = runtime_settings()
@@ -1183,15 +1268,16 @@ async def serve(path, *, practice, port, browser, bind="127.0.0.1"):
             print(f"EchoScope Radar · {url}", flush=True)
         if browser:
             await asyncio.to_thread(webbrowser.open, url)
+        LOG.info("monitor_started")
         while not state.closed.is_set():
             try:
                 await asyncio.wait_for(state.closed.wait(), timeout=5)
             except TimeoutError:
-                if browser and monotonic() - state.last_seen > settings.local_idle_timeout_s:
-                    break
+                pass
     finally:
         signal.signal(signal.SIGTERM, previous)
         await runner.cleanup()
+        LOG.info("monitor_stopped")
 
 
 def main():
@@ -1202,6 +1288,7 @@ def main():
     parser.add_argument("--env-file", type=Path)
     parser.add_argument("--port", type=int)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--no-window", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--server-dir", type=Path, help="Carpeta privada del servidor multiusuario")
     parser.add_argument(
         "--set-password", metavar="USUARIO", help="Crea o actualiza una cuenta del servidor"
@@ -1213,6 +1300,9 @@ def main():
     args = parser.parse_args()
     try:
         settings = load_environment(args.env_file)
+        from .lifecycle import configure_logging
+
+        configure_logging(settings.data_dir, practice=args.demo)
         port = (
             args.port
             if args.port is not None

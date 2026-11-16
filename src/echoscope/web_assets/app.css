@@ -269,3 +269,9 @@ dialog::backdrop { background:#050910a8 }
 .db-full-text,.db-excerpt { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5 }
 .db-full-text { max-height:360px; overflow:auto }
 .section-nav { overflow-x:auto; flex-shrink:0 }
+.storage-card { margin-bottom:18px; padding:18px; display:grid; gap:12px }
+.storage-card code { overflow-wrap:anywhere; user-select:text }
+.storage-cleanup { display:flex; align-items:center; gap:16px; flex-wrap:wrap }
+.storage-cleanup label { display:flex; align-items:center; gap:8px }
+.storage-cleanup input[type="number"] { max-width:95px }
+.storage-cleanup input[type="checkbox"] { width:18px; height:18px; flex:none }

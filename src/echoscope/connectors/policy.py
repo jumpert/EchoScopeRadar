@@ -9,7 +9,7 @@ from .syndication import parse_date
 def publication_selected(request, title, published):
     if published and published < utcnow() - timedelta(days=request.source.initial_days):
         return False
-    return request.source.tracking == "owned" or any(
+    return request.source.tracking in {"all", "owned"} or any(
         match.confirmed for match in evaluate(title or "", request.rules)
     )
 

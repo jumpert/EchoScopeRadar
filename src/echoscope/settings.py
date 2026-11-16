@@ -51,7 +51,20 @@ class RuntimeSettings(BaseModel):
 def load_environment(path: Path | None = None):
     explicit = path or os.environ.get("ECHOSCOPE_ENV_FILE")
     base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path.cwd()
-    target = Path(explicit).expanduser().resolve() if explicit else base / ".env"
+    persistent = (
+        Path(
+            os.environ.get("ECHOSCOPE_DATA_DIR")
+            or user_data_path("EchoScopeRadar", appauthor=False)
+        )
+        / "instalacion.env"
+    )
+    target = (
+        Path(explicit).expanduser().resolve()
+        if explicit
+        else base / ".env"
+        if (base / ".env").is_file()
+        else persistent
+    )
     if explicit and not target.is_file():
         raise ValueError("No se encontró el archivo de entorno indicado.")
     if target.is_file():

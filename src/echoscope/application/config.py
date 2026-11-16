@@ -29,7 +29,7 @@ class Source(StrictModel):
     params: dict[str, Any] = Field(default_factory=dict)
     credential: Credential | None = None
     retention_days: int = Field(default=30, ge=1, le=30)
-    tracking: Literal["topic", "owned"] = "topic"
+    tracking: Literal["topic", "all", "owned"] = "topic"
     comment_credential: Credential | None = None
     initial_days: int = Field(default=7, ge=1, le=30)
     follow_days: int = Field(default=30, ge=1, le=30)
@@ -82,7 +82,7 @@ class Configuration(StrictModel):
     sources: list[Source] = Field(max_length=100)
     jobs: list[Job] = Field(max_length=100)
     rule_sets: dict[str, list[RuleSpec]]
-    desktop_profile: Literal[1, 2] | None = None
+    desktop_profile: Literal[1, 2, 3] | None = None
 
     @model_validator(mode="after")
     def references(self):

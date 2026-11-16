@@ -1,3 +1,5 @@
+> La comprobación vigente para 0.14.0 está en [Prensa y segundo plano](prensa-y-segundo-plano.md). Las tablas siguientes conservan los resultados de la validación anterior.
+
 # Guía de fuentes de Uruguay y formas de conexión
 
 EchoScope Radar 0.12.0 · comprobaciones del 12 de noviembre de 2026

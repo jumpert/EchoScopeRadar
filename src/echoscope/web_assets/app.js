@@ -9,7 +9,7 @@ const labels = {
 const helpText = {
   board: ["Cómo usar la mesa", "Elegí qué pestañas ver y buscá dentro de lo ya recibido. «Alertas» muestra las coincidencias confirmadas. Congelar vista mantiene lo que ves mientras la captura sigue. Para buscar publicaciones nuevas, elegí Buscar por tema."],
   news: ["Noticias", "Titulares y extractos de los medios que seguís. Abrí el enlace de origen para leer la nota completa."],
-  press: ["Comentarios de prensa", "Primero se seleccionan las notas cuyo título coincide con la lista blanca. Después se lee la nota y se analizan por separado los comentarios públicos accesibles mediante RSS, WordPress, Disqus o HTML reconocible. Usá el filtro Alertas para priorizar los comentarios con coincidencias. Los comentarios cargados por sistemas no compatibles pueden quedar fuera."],
+  press: ["Comentarios de prensa", "La modalidad Todas las publicaciones revisa comentarios aunque el título no mencione tu tema. Se leen comentarios públicos mediante Montevideo Portal, RSS, WordPress, Disqus con clave o HTML reconocible. Alertas resalta las coincidencias de la lista blanca dentro de cada comentario. Los accesos pendientes y las capturas parciales se indican por fuente."],
   youtube: ["Videos de YouTube", "Agregá tu clave en Claves API y verificá el acceso en Tema y acceso. Los canales automáticos consultan videos recientes relacionados con tus términos. Para leer un video concreto, agregá su enlace en Fuentes."],
   live: ["Chat en vivo", "Los canales automáticos esperan un directo relacionado con tus términos. Para probar uno que está al aire, agregá el enlace del directo en Fuentes. YouTube debe tener el chat habilitado y accesible."],
   reviews: ["Cómo recibir reseñas", ""],
@@ -600,7 +600,7 @@ function renderSources() {
       row.dataset.sourceId = id;
       const title = node("td", "", job.name);
       title.append(node("div", "metadata", job.type_label ?? "Fuente simulada"));
-      title.append(node("div", "metadata", job.tracking === "owned" ? "Cuenta propia · propiedad declarada" : "Por tema · títulos relacionados"));
+      title.append(node("div", "metadata", job.tracking === "owned" ? "Cuenta propia · propiedad declarada" : job.tracking === "all" ? "Todas las publicaciones y sus comentarios" : "Por tema · títulos relacionados"));
       const controls = node("div", "source-order");
       const handle = node("span", "drag-handle", "⠿");
       handle.draggable = true;
@@ -746,22 +746,24 @@ async function runAction(name, payload, success) {
 }
 
 function sourceFields() {
+  $("source-relevant").disabled = $("source-tracking").value !== "topic";
   const type = $("source-type").value;
   const pending = type.includes("acceso pendiente");
   $("source-pending-help").hidden = !pending;
   $("source-enabled").disabled = pending;
   if (pending) $("source-enabled").checked = false;
   const feed = type.includes("RSS");
+  const page = type.includes("página web");
   const comments = type.startsWith("Comentarios de un sitio");
   const reviews = type.startsWith("Reseñas de un sitio");
-  $("address-label").textContent = pending ? "Enlace HTTPS de la página o canal" : reviews ? "Enlace de la página de reseñas" : feed ? (comments ? "Enlace del feed o de la página" : "Enlace HTTPS al RSS/Atom") :
+  $("address-label").textContent = page ? "Enlace HTTPS de la portada de noticias" : pending ? "Enlace HTTPS de la página o canal" : reviews ? "Enlace de la página de reseñas" : feed ? (comments ? "Enlace del feed o de la página" : "Enlace HTTPS al RSS/Atom") :
     (type.includes("Bluesky") ? "Enlace de la publicación de Bluesky" : type.startsWith("Canal") ? "Enlace o @nombre del canal de YouTube" : "Enlace del video o directo");
   $("discover").hidden = !comments && !reviews;
   $("discover").textContent = reviews ? "Buscar reseñas en la página" : "Detectar feed";
   $("review-source-hint").hidden = !reviews;
   $("feed-token").hidden = !feed;
   const minutes = $("source-minutes");
-  minutes.min = type.includes("directos automáticos") ? "30" : (type.includes("videos automáticos") || type.includes("Comentarios de un video") ? "5" : "1");
+  minutes.min = type.includes("directos automáticos") ? "30" : (page || type.includes("videos automáticos") || type.includes("Comentarios de un video") ? "5" : "1");
   if (Number(minutes.value) < Number(minutes.min)) minutes.value = minutes.min;
 }
 
@@ -778,7 +780,7 @@ function showSource(job = {}) {
   $("source-minutes").value = Math.max(1, Math.ceil(job.minutes ?? 15));
   $("source-enabled").checked = job.enabled ?? true;
   $("source-relevant").checked = job.relevant_only ?? false;
-  $("source-tracking").value = job.tracking ?? "topic";
+  $("source-tracking").value = job.tracking ?? "all";
   $("source-resource-id").value = job.resource_id ?? "";
   $("source-comment-provider").value = job.comment_provider ?? "";
   $("source-feedback").textContent = "";
@@ -797,6 +799,7 @@ function choosePage(page) {
   }
   if (page === "sources") renderSources();
   if (page === "database") {
+    loadStorage();
     refreshDataSources();
     if (!dataView.query && ui.token) loadData();
   }
@@ -938,6 +941,7 @@ $("add-review-source").addEventListener("click", () => {
   showSource({ type_label: "Reseñas de un sitio (RSS/Atom)" });
 });
 $("source-type").addEventListener("change", sourceFields);
+$("source-tracking").addEventListener("change", sourceFields);
 $("source-address").addEventListener("input", () => { $("source-parent").value = ""; });
 $("discover").addEventListener("click", async () => {
   const reviews = $("source-type").value.startsWith("Reseñas de un sitio");
@@ -1260,8 +1264,12 @@ $("youtube-form").addEventListener("submit", async (event) => {
     $("video-results").replaceChildren(...(buttons.length ? buttons : [node("p", "", "No se encontraron videos.")]));
   } catch (error) { $("video-results").replaceChildren(node("p", "", error.message)); }
 });
-$("shutdown").addEventListener("click", async () => {
-  if (!window.confirm("¿Cerrar EchoScope y detener el seguimiento?")) return;
+$("shutdown").addEventListener("click", () => $("exit-dialog").showModal());
+$("keep-background").addEventListener("click", () => {
+  $("exit-dialog").close();
+});
+$("exit-confirm").addEventListener("click", async () => {
+  $("exit-dialog").close();
   try {
     await api("shutdown", {});
     ui.closed = true;
@@ -1298,6 +1306,61 @@ function dataFilters() {
     matches_only: $("db-matches").checked,
   };
 }
+
+let cleanupToken = null;
+let storagePath = null;
+let storageBusy = false;
+function storageBytes(bytes) {
+  if (bytes == null) return "no disponible";
+  const units = ["bytes", "KiB", "MiB", "GiB", "TiB"];
+  let value = bytes, unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+  return `${value.toLocaleString("es-UY", { maximumFractionDigits: 2 })} ${units[unit]}`;
+}
+async function loadStorage() {
+  try {
+    const data = await api("data-storage", {});
+    storagePath = data.path;
+    $("storage-path").textContent = data.path || "Archivo privado de esta cuenta en el servidor";
+    $("storage-copy").hidden = !data.path;
+    $("storage-summary").textContent = `${data.counts.message_sources.toLocaleString("es-UY")} capturas · ${data.counts.messages.toLocaleString("es-UY")} mensajes únicos · ${data.counts.alerts.toLocaleString("es-UY")} alertas · ${storageBytes(data.total_file_bytes)} ocupados (base y auxiliares).`;
+    $("storage-space").textContent = `Archivo principal: ${storageBytes(data.database_bytes)} · WAL: ${storageBytes(data.wal_bytes)} · SHM: ${storageBytes(data.shm_bytes)} · Reutilizable dentro de SQLite: ${storageBytes(data.reusable_bytes)}. ${data.disk_free_bytes == null ? "" : `Disco disponible: ${storageBytes(data.disk_free_bytes)}. `}SQLite no tiene una cuota reservada; comparte el espacio libre con los demás archivos. Retención automática configurada: ${data.retention_days.join(" / ")} días según la fuente. Actualizado: ${detailTime.format(new Date(data.checked_at))}.`;
+  } catch (error) { $("storage-summary").textContent = error.message; }
+}
+$("storage-refresh").addEventListener("click", loadStorage);
+$("storage-copy").addEventListener("click", async () => {
+  if (!storagePath) return;
+  try { await navigator.clipboard.writeText(storagePath); $("storage-status").textContent = "Ruta de la base activa copiada."; }
+  catch { $("storage-status").textContent = "Seleccioná y copiá la ruta que aparece arriba."; }
+});
+$("storage-cleanup-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (storageBusy) return;
+  storageBusy = true; cleanupToken = null;
+  try {
+    const data = await api("data-cleanup-preview", {
+      keep_days: Number($("storage-days").value), only_unmatched: $("storage-unmatched").checked,
+    });
+    cleanupToken = data.token;
+    $("storage-preview").textContent = `${data.captures.toLocaleString("es-UY")} capturas y ${data.alerts.toLocaleString("es-UY")} alertas anteriores al ${detailTime.format(new Date(data.cutoff))}. ${data.only_unmatched ? "Se conservan todas las capturas con coincidencias." : "Incluye capturas con coincidencias."} También se limpiarán ${data.technical_events.toLocaleString("es-UY")} eventos técnicos antiguos sin capturas asociadas, las ejecuciones que queden sin eventos y se intentará compactar el archivo.`;
+    $("storage-confirm-dialog").showModal();
+  } catch (error) { $("storage-status").textContent = error.message; }
+  finally { storageBusy = false; }
+});
+$("storage-confirm").addEventListener("click", async () => {
+  if (!cleanupToken || storageBusy) return;
+  storageBusy = true; $("storage-confirm").disabled = true;
+  $("storage-status").textContent = "Limpiando datos y compactando la base. El seguimiento volverá a su estado anterior al terminar…";
+  try {
+    const result = await api("data-cleanup-confirm", { token: cleanupToken }, AbortSignal.timeout(180000));
+    cleanupToken = null;
+    $("storage-confirm-dialog").close();
+    $("storage-status").textContent = `${result.removed} capturas eliminadas · ${result.events_removed} eventos · ${result.executions_removed} ejecuciones. ${result.compacted ? "Base compactada." : "La compactación queda pendiente; el espacio liberado puede reutilizarse dentro de SQLite."}`;
+    await loadStorage();
+    if (!dataView.busy) await loadData();
+  } catch (error) { $("storage-status").textContent = error.message; }
+  finally { storageBusy = false; $("storage-confirm").disabled = false; }
+});
 function dataButtons() {
   for (const control of $("database-form").querySelectorAll("input,select,button")) control.disabled = dataView.busy;
   $("db-export").disabled = dataView.busy || !dataView.query;

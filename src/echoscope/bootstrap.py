@@ -2,6 +2,7 @@ from echoscope.application.ports import ConnectorType
 from echoscope.connectors.bluesky import BlueskyParams, BlueskyThread
 from echoscope.connectors.pending import PendingConnector, PendingParams
 from echoscope.connectors.press_feed import PressFeed
+from echoscope.connectors.press_page import PressPage
 from echoscope.connectors.simulated import SimParams, Simulator
 from echoscope.connectors.syndication import Feed, FeedParams
 from echoscope.connectors.youtube import YouTubeLive, YouTubeParams
@@ -25,6 +26,10 @@ def registry() -> dict[str, ConnectorType]:
             ("bearer",),
             min_interval_s=60,
             capabilities=("publications", "comments", "recovery_window"),
+        ),
+        ConnectorType(
+            "press_page", "poll", FeedParams, PressPage, min_interval_s=300,
+            capabilities=("publications", "comments", "replies", "recovery_window"),
         ),
         ConnectorType(
             "press_feed",
@@ -51,7 +56,6 @@ def registry() -> dict[str, ConnectorType]:
             ChannelParams,
             YouTubeChannelLive,
             ("api_key", "oauth"),
-            persistent=False,
             min_interval_s=1800,
             capabilities=("publications", "live_chat"),
         ),
@@ -70,7 +74,6 @@ def registry() -> dict[str, ConnectorType]:
             YouTubeParams,
             YouTubeLive,
             ("api_key", "oauth"),
-            persistent=False,
             min_interval_s=60,
             capabilities=("live_chat",),
         ),

@@ -360,13 +360,14 @@ class Radar:
         observations = await asyncio.to_thread(evaluate_batch)
         async with self.controls:
             current = self.jobs[key]
-            if current.job.relevant_only and current.source.tracking != "owned":
+            if current.job.relevant_only and current.source.tracking not in {"all", "owned"}:
                 observations = tuple(
                     item
                     for item in observations
                     if item.matches
                     or item.message.kind == Kind.PRESS_COMMENT
-                    or (current.source.type == "press_feed" and item.message.kind == Kind.REVIEW)
+                    or (current.source.type in {"press_feed", "press_page"}
+                        and item.message.kind == Kind.REVIEW)
                 )
             snapshot = replace(
                 current,
@@ -388,6 +389,10 @@ class Radar:
             if not definition.persistent:
                 self._remember(snapshot, observations)
             self.jobs[key] = snapshot
+            LOG.info("batch_committed job=%s received=%d stored=%d alerts=%d partial=%s detail=%s",
+                     key, len(batch.messages), len(observations),
+                     sum(any(m.confirmed for m in o.matches) for o in observations),
+                     batch.coverage_gap, batch.detail or "OK")
             if observations:
                 self.last_batch_received[key] = received_at
             self._notify()

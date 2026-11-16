@@ -1,3 +1,5 @@
+> Desde 0.14.2 también se puede consultar capacidad y previsualizar una limpieza por antigüedad. [Almacenamiento y acceso real](almacenamiento-y-acceso.md). La tabla de resultados continúa siendo de solo lectura.
+
 # Consulta visual y comentarios de prensa
 
 EchoScope Radar 0.13.0 · 13 de noviembre de 2026

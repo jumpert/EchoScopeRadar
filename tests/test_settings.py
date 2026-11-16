@@ -7,6 +7,23 @@ from echoscope.settings import load_environment, runtime_settings
 from echoscope.storage.factory import create_store
 
 
+def test_persistent_environment_is_shared_by_launcher_and_startup(tmp_path, monkeypatch):
+    data = tmp_path / "data"
+    work = tmp_path / "program"
+    data.mkdir()
+    work.mkdir()
+    (data / "instalacion.env").write_text("ECHOSCOPE_PORT=18700\n", encoding="utf-8")
+    monkeypatch.chdir(work)
+    monkeypatch.setenv("ECHOSCOPE_DATA_DIR", str(data))
+    monkeypatch.delenv("ECHOSCOPE_ENV_FILE", raising=False)
+    monkeypatch.delenv("ECHOSCOPE_PORT", raising=False)
+    assert load_environment().port == 18700
+    monkeypatch.delenv("ECHOSCOPE_PORT", raising=False)
+    (work / ".env").write_text("ECHOSCOPE_PORT=18701\n", encoding="utf-8")
+    assert load_environment().port == 18701
+    monkeypatch.delenv("ECHOSCOPE_PORT", raising=False)
+
+
 def test_env_precedence_and_safe_validation(tmp_path, monkeypatch):
     env = tmp_path / "settings.env"
     env.write_text("ECHOSCOPE_PORT=18799\nECHOSCOPE_POLL_SLOTS=7\n", encoding="utf-8")

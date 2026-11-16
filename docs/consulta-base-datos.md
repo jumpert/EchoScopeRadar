@@ -1,3 +1,5 @@
+> Para esta computadora, la ruta comprobada, conteos actuales y pasos de DBeaver están en [Almacenamiento y acceso real](almacenamiento-y-acceso.md). Las rutas personalizadas de los ejemplos siguientes no representan necesariamente tu instalación.
+
 # Consultar directamente la base de datos
 
 EchoScope Radar 0.12.0 · 12 de noviembre de 2026

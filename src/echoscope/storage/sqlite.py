@@ -747,3 +747,18 @@ class Store:
             async with self._writer, self.engine.connect() as conn:
                 with suppress(Exception):
                     await conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    async def database_stats(self):
+        from .maintenance import database_stats
+
+        return await database_stats(self)
+
+    async def cleanup_plan(self, cutoff, only_unmatched):
+        from .maintenance import cleanup_plan
+
+        return await cleanup_plan(self, cutoff, only_unmatched)
+
+    async def cleanup_before(self, plan):
+        from .maintenance import cleanup_before
+
+        return await cleanup_before(self, plan)

@@ -13,8 +13,8 @@ from pydantic import ValidationError
 
 from echoscope.application.administration import (
     CHANNEL_TYPES,
-    RSS_TYPES,
     SOURCE_TYPES,
+    WEB_TYPES,
     Administration,
     SourceForm,
 )
@@ -232,7 +232,12 @@ class SourceDialog(tk.Toplevel):
 
     def _changed(self, event=None):
         connector, kind = SOURCE_TYPES[self.form["type"].get()]
-        if connector in RSS_TYPES:
+        if connector in WEB_TYPES:
+            if connector == "press_page":
+                self.note.set("Enlace HTTPS de la portada de noticias del medio")
+                self.token_group.grid_remove()
+                self.discover_button.pack_forget()
+                return
             content = {"PRESS_COMMENT": "comentarios", "FORUM_POST": "publicaciones del foro"}.get(
                 kind, "noticias"
             )
@@ -295,7 +300,7 @@ class Desktop:
         )
         self.root.geometry("1080x720")
         self.root.minsize(850, 600)
-        self.root.protocol("WM_DELETE_WINDOW", self.close)
+        self.root.protocol("WM_DELETE_WINDOW", self.request_close)
 
         frame = ttk.Frame(self.root, padding=18)
         frame.pack(fill="both", expand=True)
@@ -534,7 +539,7 @@ class Desktop:
                 state += " · cobertura parcial"
             if source.type in {"youtube_live", "youtube_channel_live"}:
                 state += " · solo sesión"
-            if source.type in RSS_TYPES:
+            if source.type in WEB_TYPES:
                 kind = KIND_LABELS.get(Kind(source.params.get("kind", "FEED_ENTRY")), "Feed")
             else:
                 kind = {
@@ -809,6 +814,26 @@ class Desktop:
         table.bind("<Double-1>", lambda _: choose())
         self.status.set(f"YouTube devolvió {len(videos)} videos.")
 
+    def request_close(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Cerrar EchoScope Radar")
+        dialog.transient(self.root)
+        body = ttk.Frame(dialog, padding=20)
+        body.pack()
+        ttk.Label(body, text="La aplicación quedará en segundo plano y seguirá capturando.",
+                  wraplength=350).pack(pady=8)
+
+        def background():
+            dialog.destroy()
+            self.root.iconify()
+
+        def exit_app():
+            dialog.destroy()
+            self.close()
+
+        ttk.Button(body, text="Confirmar segundo plano", command=background).pack(fill="x", pady=4)
+        ttk.Button(body, text="Salir y detener captura", command=exit_app).pack(fill="x", pady=4)
+
     def close(self):
         if self.closing:
             return
@@ -829,6 +854,9 @@ def main():
     parser.add_argument("--env-file", type=Path)
     args = parser.parse_args()
     settings = load_environment(args.env_file)
+    from .lifecycle import configure_logging
+
+    configure_logging(settings.data_dir, practice=args.demo)
     path = args.db or (
         settings.data_dir / "practica.sqlite"
         if args.demo

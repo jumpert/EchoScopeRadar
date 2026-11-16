@@ -26,8 +26,11 @@ async def test_tui_panel_navigation_pause_detail_and_freeze(tmp_path):
             assert snapshot == app.panel_rows
             await pilot.press("end", "f")
             assert isinstance(app.screen, FilterScreen)
-            await pilot.press("escape", "r", "m")
-            assert not radar.jobs["comentarios"].paused
-            assert app.maximized
+            await pilot.press("escape")
+            await until(lambda: not isinstance(app.screen, FilterScreen))
+            await pilot.press("r")
+            await until(lambda: not radar.jobs["comentarios"].paused)
+            await pilot.press("m")
+            await until(lambda: app.maximized)
             assert sum(widget.display for widget in app.query(".board")) == 1
             assert app.query_one("#messages-1", OptionList).option_count > 0

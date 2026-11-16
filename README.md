@@ -2,7 +2,11 @@
 
 Centro de monitoreo para comentarios, reseñas, feeds y chats de directos. Cada panel muestra los mensajes recibidos, incluidas las capturas sin coincidencias. Las reglas resaltan términos en el texto original y agrupan sus apariciones por alerta.
 
-## Versión 0.13.0 · Consulta de datos y comentarios de prensa
+## Versión 0.15.0 · Inicio automático, Windows y Linux
+
+[Inicio automático, distribuciones y dominio](docs/inicio-automatico-y-distribuciones.md). Los paquetes Windows ZIP y Linux TAR.GZ se generan en `dist/0.15.0/`; incluyen instaladores de inicio y usan configuración persistente `instalacion.env`.
+
+[Auditoría de 16 medios, cobertura y registros](docs/prensa-y-segundo-plano.md). Se incorpora lectura pública de comentarios de Montevideo Portal, seguimiento de todas las noticias del recurso sin exigir coincidencia en el título, ejecución en segundo plano sin ventana adicional y persistencia de chats. Los comentarios que requieren claves o una integración pendiente se informan como tales.
 
 En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa, YouTube, Bluesky y foros autorizados desde el navegador. Abrí **Probar EchoScope Radar.cmd** para practicar con datos simulados. En **Reseñas**, elegí **Cómo recibir reseñas** para empezar con el enlace de una página. **Descargar PDF** agrupa las alertas del período por publicación original y muestra su estado actual de revisión.
 
@@ -10,9 +14,9 @@ En Windows, abrí **Abrir EchoScope Radar.cmd** para seguir prensa, YouTube, Blu
 - [Pruebas y notas de prensa de Uruguay](docs/fuentes-uruguay.md)
 - [Historial de versiones](CHANGELOG.md)
 
-En **Base de datos**, combiná filtros, abrí el contenido almacenado y exportá la consulta a Excel, CSV o PDF. La vista es de solo lectura y respeta la cuenta del servidor. [Guía de consulta y prensa](docs/consulta-visual-y-prensa.md).
+En **Base de datos**, combiná filtros, abrí el contenido almacenado y exportá la consulta a Excel, CSV o PDF. La tabla de consulta es de solo lectura y respeta la cuenta del servidor. Almacenamiento y mantenimiento muestra la ruta real y permite previsualizar una limpieza por antigüedad. [Capacidad y acceso externo](docs/almacenamiento-y-acceso.md). [Guía de consulta y prensa](docs/consulta-visual-y-prensa.md).
 
-Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/0.13.0/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`.
+Para generar la carpeta distribuible en Windows, ejecutá `powershell -NoProfile -File scripts/build-windows.ps1` desde el proyecto. El resultado queda en `dist/0.15.0/EchoScopeRadar/` y se abre con `EchoScopeRadar.exe`. Conservá la carpeta `_internal`.
 
 - [Fuentes de Uruguay y requisitos de conexión](docs/fuentes-uruguay-conexiones.md)
 - [Cómo consultar directamente la base](docs/consulta-base-datos.md)
@@ -71,7 +75,7 @@ El Atom del [U.S. Geological Survey](https://earthquake.usgs.gov/earthquakes/fee
 
 Para un feed protegido, agregá `credential: {kind: bearer, env: ECHOSCOPE_FEED_TOKEN}` a la fuente y cargá esa variable en el entorno del proceso desde tu gestor de secretos. `echoscope doctor` informa si la referencia tiene un valor. `echoscope doctor --network usgs` realiza una lectura diagnóstica explícita. Dejá pasar al menos 60 segundos entre lecturas de prueba de USGS.
 
-Para YouTube Live instalá `uv sync --locked --extra youtube`. En el ejemplo, cambiá `video_id` por el ID de un directo y habilitá la tarea `directo`. Inyectá una clave de proyecto en `ECHOSCOPE_YOUTUBE_KEY` o seleccioná `kind: oauth` y una variable con un token vigente. La clave o token deben tener acceso a la API de YouTube. Volvé a aplicar el archivo con el motor detenido y abrí la consola. Un chat pendiente, cerrado, sin permisos o limitado por cuota se muestra como estado operativo. Un hueco posible después de una reconexión aparece como `CAPTURA PARCIAL`. El chat de YouTube tiene una ventana local de hasta 200 mensajes por tarea en memoria y aparece como `SOLO SESIÓN`. [Guía oficial de YouTube Live](https://developers.google.com/youtube/data/live/streaming-live-chat)
+Para YouTube Live instalá `uv sync --locked --extra youtube`. En el ejemplo, cambiá `video_id` por el ID de un directo y habilitá la tarea `directo`. Inyectá una clave de proyecto en `ECHOSCOPE_YOUTUBE_KEY` o seleccioná `kind: oauth` y una variable con un token vigente. La clave o token deben tener acceso a la API de YouTube. Volvé a aplicar el archivo con el motor detenido y abrí la consola. Un chat pendiente, cerrado, sin permisos o limitado por cuota se muestra como estado operativo. Un hueco posible después de una reconexión aparece como `CAPTURA PARCIAL`. Los chats de YouTube se guardan en la base; el perfil incorporado conserva siete días. Los conectores no persistentes de otras clases conservan una ventana de sesión de hasta 200 mensajes por tarea. [Guía oficial de YouTube Live](https://developers.google.com/youtube/data/live/streaming-live-chat)
 
 La cobertura depende del recurso y del acceso que ofrece cada proveedor. La mesa web incluye comentarios de videos y chat de directos de YouTube. Instagram Live, Twitch y otros conectores de plataforma pertenecen a los siguientes hitos.
 

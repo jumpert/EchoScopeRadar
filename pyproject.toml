@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "echoscope-radar"
-version = "0.13.0"
+version = "0.15.0"
 description = "Local monitoring workspace for news, comments and live chats"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -17,6 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+bundle = ["pyinstaller>=6,<7"]
 youtube = ["grpcio>=1.68,<2", "protobuf>=7.35.1,<8"]
 windows-build = ["pyinstaller>=6,<7; sys_platform == 'win32'"]
 

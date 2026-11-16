@@ -1,0 +1,13 @@
+# Linux x86_64 bundle. Target: Debian 12 / Ubuntu 24.04 or glibc >= 2.36.
+FROM python:3.12-slim-bookworm AS build
+RUN apt-get update && apt-get install -y --no-install-recommends binutils \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir uv==0.13.7
+WORKDIR /work
+COPY . .
+RUN sh scripts/build-linux.sh
+RUN mkdir /artifacts && version=$(.cache/linux-build-venv/bin/python -c \
+    'from importlib.metadata import version; print(version("echoscope-radar"))') \
+    && cp "dist/$version/EchoScopeRadar-$version-linux-x86_64.tar.gz" /artifacts/
+FROM scratch AS artifacts
+COPY --from=build /artifacts/ /

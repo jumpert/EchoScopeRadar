@@ -1,0 +1,564 @@
+{
+  "checked_at": "2026-11-13T22:07:53.962563+00:00",
+  "outlets": [
+    {
+      "id": "telenoche",
+      "outlet": "Canal 4 · Telenoche · Nacionales",
+      "feed": "https://www.telenoche.com.uy/rss/pages/nacionales.xml",
+      "news_count": 20,
+      "samples": [
+        {
+          "article": "https://www.telenoche.com.uy/nacionales/yamandu-orsi-se-reunira-espana-el-presidente-del-real-madrid-n5407292",
+          "mechanisms": [
+            {
+              "type": "html",
+              "url": "https://www.telenoche.com.uy/nacionales/yamandu-orsi-se-reunira-espana-el-presidente-del-real-madrid-n5407292",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        },
+        {
+          "article": "https://www.telenoche.com.uy/nacionales/que-dice-el-informe-juridico-presidencia-que-hizo-revertir-la-baja-la-sancion-anestesista-n5407283",
+          "mechanisms": [
+            {
+              "type": "html",
+              "url": "https://www.telenoche.com.uy/nacionales/que-dice-el-informe-juridico-presidencia-que-hizo-revertir-la-baja-la-sancion-anestesista-n5407283",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "subrayado",
+      "outlet": "Subrayado · Nacional",
+      "feed": "https://www.subrayado.com.uy/rss/pages/nacional.xml",
+      "news_count": 20,
+      "samples": [
+        {
+          "article": "https://www.subrayado.com.uy/sindicato-del-supergas-anuncio-movilizacion-y-paro-parcial-pide-reunion-miem-y-ancap-n885539",
+          "mechanisms": [
+            {
+              "type": "disqus",
+              "forum": "subrayado",
+              "article": "https://www.subrayado.com.uy/sindicato-del-supergas-anuncio-movilizacion-y-paro-parcial-pide-reunion-miem-y-ancap-n885539"
+            },
+            {
+              "type": "html",
+              "url": "https://www.subrayado.com.uy/sindicato-del-supergas-anuncio-movilizacion-y-paro-parcial-pide-reunion-miem-y-ancap-n885539",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "disqus",
+              "status": "requires_key"
+            },
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        },
+        {
+          "article": "https://www.subrayado.com.uy/se-del-proyecto-del-ex-hotel-san-rafael-el-principal-socio-inversor-cipriani-n885506",
+          "mechanisms": [
+            {
+              "type": "disqus",
+              "forum": "subrayado",
+              "article": "https://www.subrayado.com.uy/se-del-proyecto-del-ex-hotel-san-rafael-el-principal-socio-inversor-cipriani-n885506"
+            },
+            {
+              "type": "html",
+              "url": "https://www.subrayado.com.uy/se-del-proyecto-del-ex-hotel-san-rafael-el-principal-socio-inversor-cipriani-n885506",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "disqus",
+              "status": "requires_key"
+            },
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "montevideo-portal",
+      "outlet": "Montevideo Portal · Noticias",
+      "feed": "https://www.montevideo.com.uy/anxml.aspx?59",
+      "news_count": 8,
+      "samples": [
+        {
+          "article": "https://www.montevideo.com.uy/auc.aspx?982148",
+          "mechanisms": [
+            {
+              "type": "montevideo",
+              "post": "982148"
+            },
+            {
+              "type": "html",
+              "url": "https://www.montevideo.com.uy/auc.aspx?982148",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "montevideo",
+              "partial": true,
+              "kinds": {
+                "PRESS_COMMENT": 10
+              }
+            },
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        },
+        {
+          "article": "https://www.montevideo.com.uy/auc.aspx?982139",
+          "mechanisms": [
+            {
+              "type": "montevideo",
+              "post": "982139"
+            },
+            {
+              "type": "html",
+              "url": "https://www.montevideo.com.uy/auc.aspx?982139",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "montevideo",
+              "partial": true,
+              "kinds": {
+                "PRESS_COMMENT": 10
+              }
+            },
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "el-observador",
+      "outlet": "El Observador · Nacional",
+      "feed": "https://www.elobservador.com.uy/rss/pages/nacional.xml",
+      "news_count": 20,
+      "samples": [
+        {
+          "article": "https://www.elobservador.com.uy/nacional/tiroteo-gimnasio-washington-el-uruguayo-herido-evoluciona-favorablemente-y-recibiria-el-alta-los-proximos-dias-n6063794",
+          "mechanisms": [
+            {
+              "type": "html",
+              "url": "https://www.elobservador.com.uy/nacional/tiroteo-gimnasio-washington-el-uruguayo-herido-evoluciona-favorablemente-y-recibiria-el-alta-los-proximos-dias-n6063794",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        },
+        {
+          "article": "https://www.elobservador.com.uy/nacional/orsi-se-reune-el-presidente-del-real-madrid-florentino-perez-el-santiago-bernabeu-n6063786",
+          "mechanisms": [
+            {
+              "type": "html",
+              "url": "https://www.elobservador.com.uy/nacional/orsi-se-reune-el-presidente-del-real-madrid-florentino-perez-el-santiago-bernabeu-n6063786",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "la-diaria",
+      "outlet": "la diaria",
+      "feed": "https://ladiaria.com.uy/feeds/articulos/",
+      "news_count": 353,
+      "samples": [
+        {
+          "article": "https://ladiaria.com.uy/justicia/articulo/2026/11/republica-ganadera-abogados-reclamaron-en-el-parlamento-por-falta-de-avances-en-la-causa/",
+          "mechanisms": [
+            {
+              "type": "html",
+              "url": "https://ladiaria.com.uy/justicia/articulo/2026/11/republica-ganadera-abogados-reclamaron-en-el-parlamento-por-falta-de-avances-en-la-causa/",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        },
+        {
+          "article": "https://ladiaria.com.uy/feminismos/articulo/2026/11/los-vinculos-entre-la-desaparicion-de-mujeres-y-la-trata-sexual-los-datos-que-hay-en-la-region-y-los-desafios-en-uruguay/",
+          "mechanisms": [
+            {
+              "type": "html",
+              "url": "https://ladiaria.com.uy/feminismos/articulo/2026/11/los-vinculos-entre-la-desaparicion-de-mujeres-y-la-trata-sexual-los-datos-que-hay-en-la-region-y-los-desafios-en-uruguay/",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "brecha",
+      "outlet": "Brecha",
+      "feed": "https://brecha.com.uy/feed/",
+      "news_count": 100,
+      "samples": [
+        {
+          "article": "https://brecha.com.uy/soberanos-vacios/",
+          "mechanisms": [
+            {
+              "type": "wordpress",
+              "url": "https://brecha.com.uy/wp-json/wp/v2/comments",
+              "post": "130403"
+            },
+            {
+              "type": "html",
+              "url": "https://brecha.com.uy/soberanos-vacios/",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "wordpress",
+              "partial": false,
+              "kinds": {}
+            },
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        },
+        {
+          "article": "https://brecha.com.uy/cambiaron-muchas-cosas-en-la-vida-material-de-la-gente-que-no-terminamos-de-entender/",
+          "mechanisms": [
+            {
+              "type": "wordpress",
+              "url": "https://brecha.com.uy/wp-json/wp/v2/comments",
+              "post": "130386"
+            },
+            {
+              "type": "html",
+              "url": "https://brecha.com.uy/cambiaron-muchas-cosas-en-la-vida-material-de-la-gente-que-no-terminamos-de-entender/",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "wordpress",
+              "partial": false,
+              "kinds": {}
+            },
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "caras-caretas",
+      "outlet": "Caras y Caretas",
+      "feed": "https://www.carasycaretas.com.uy/rss/pages/home.xml",
+      "news_count": 20,
+      "samples": [
+        {
+          "article": "https://www.carasycaretas.com.uy/politica/solaria-la-inversion-historica-que-enciende-el-debate-recursos-datos-y-soberania-n101058",
+          "mechanisms": [
+            {
+              "type": "html",
+              "url": "https://www.carasycaretas.com.uy/politica/solaria-la-inversion-historica-que-enciende-el-debate-recursos-datos-y-soberania-n101058",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        },
+        {
+          "article": "https://www.carasycaretas.com.uy/empresariales/presidente-la-ciu-afirma-que-hay-que-mejorar-niveles-competitividad-el-sector-n101062",
+          "mechanisms": [
+            {
+              "type": "html",
+              "url": "https://www.carasycaretas.com.uy/empresariales/presidente-la-ciu-afirma-que-hay-que-mejorar-niveles-competitividad-el-sector-n101062",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "teledoce",
+      "outlet": "Tele12 · Telemundo",
+      "feed": "https://www.teledoce.com/feed/",
+      "news_count": 10,
+      "samples": [
+        {
+          "article": "https://www.teledoce.com/telemundo/internacionales/estados-unidos-suspendio-las-operaciones-aereas-en-tierra-en-todo-el-pais-por-una-falla-en-las-comunicaciones/",
+          "error": "Forbidden"
+        },
+        {
+          "article": "https://www.teledoce.com/programas/esta-boca-es-mia/735182/",
+          "error": "Forbidden"
+        }
+      ]
+    },
+    {
+      "outlet": "El País",
+      "home": "https://www.elpais.com.uy/",
+      "feeds": [],
+      "home_status": "read",
+      "news_count": 75,
+      "samples": [
+        {
+          "article": "https://www.elpais.com.uy/mundo/estados-unidos/estados-unidos-ordena-suspender-los-despegues-en-todo-el-pais-por-problemas-en-las-comunicaciones",
+          "mechanisms": [
+            {
+              "type": "unsupported",
+              "provider": "Arena"
+            },
+            {
+              "type": "html",
+              "url": "https://www.elpais.com.uy/mundo/estados-unidos/estados-unidos-ordena-suspender-los-despegues-en-todo-el-pais-por-problemas-en-las-comunicaciones",
+              "comments": false
+            }
+          ],
+          "checks": [
+            {
+              "type": "unsupported",
+              "provider": "Arena"
+            },
+            {
+              "type": "html",
+              "partial": false,
+              "kinds": {
+                "NEWS_ARTICLE": 1
+              }
+            }
+          ]
+        },
+        {
+          "article": "https://www.elpais.com.uy/ovacion/futbol/argentina-vs-uruguay-en-vivo-por-la-fecha-fifa-de-noviembre-segui-el-minuto-a-minuto-y-como-va-el-partido",
+          "mechanisms": [
+            {
+              "type": "unsupported",
+              "provider": "Arena"
+            }
+          ],
+          "checks": [
+            {
+              "type": "unsupported",
+              "provider": "Arena"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "outlet": "Medios Públicos",
+      "home": "https://mediospublicos.uy/",
+      "feeds": [
+        "https://mediospublicos.uy/feed/podcast"
+      ],
+      "home_status": "read",
+      "news_count": 18,
+      "samples": [
+        {
+          "article": "https://mediospublicos.uy/caso-atco-uruguay-cerro-arbitraje-internacional-sin-pagar-indemnizacion/",
+          "mechanisms": [
+            {
+              "type": "wordpress",
+              "url": "https://mediospublicos.uy/wp-json/wp/v2/comments",
+              "post": "370709"
+            }
+          ],
+          "checks": [
+            {
+              "type": "wordpress",
+              "partial": false,
+              "kinds": {}
+            }
+          ]
+        },
+        {
+          "article": "https://mediospublicos.uy/detectan-sildenafil-y-tadalafil-en-productos-comercializados-como-mieles-afrodisiacas/",
+          "mechanisms": [
+            {
+              "type": "wordpress",
+              "url": "https://mediospublicos.uy/wp-json/wp/v2/comments",
+              "post": "370766"
+            }
+          ],
+          "checks": [
+            {
+              "type": "wordpress",
+              "partial": false,
+              "kinds": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "outlet": "M24",
+      "home": "https://www.m24.com.uy/",
+      "feeds": [],
+      "home_status": "read",
+      "news_count": 0
+    },
+    {
+      "outlet": "La República",
+      "home": "https://www.larepublica.com.uy/",
+      "error": "Transient"
+    },
+    {
+      "outlet": "970 Universal",
+      "home": "https://970universal.com/",
+      "feeds": [],
+      "home_status": "read",
+      "news_count": 0
+    },
+    {
+      "outlet": "Radio Monte Carlo",
+      "home": "https://www.radiomontecarlo.com.uy/",
+      "feeds": [],
+      "home_status": "read",
+      "news_count": 29,
+      "samples": [
+        {
+          "article": "https://www.radiomontecarlo.com.uy/2026/11/13/nacionales/anp-resolvio-destinar-areas-de-puntas-de-sayago-y-de-otras-operativas-para-acopiar-la-llegada-masiva-de-vehiculos-0-kilometro-para-el-mercado-local-y-regional/",
+          "mechanisms": [],
+          "checks": []
+        },
+        {
+          "article": "https://www.radiomontecarlo.com.uy/2026/11/13/nacionales/lacc-inauguro-su-nueva-terminal-logistica-denominada-mova-en-el-predio-del-antiguo-edificio-de-pasajeros-del-aeropuerto-internacional-de-carrasco/",
+          "mechanisms": [],
+          "checks": []
+        }
+      ]
+    },
+    {
+      "outlet": "CW33 Florida",
+      "home": "https://www.cw33florida.com.uy/",
+      "feeds": [
+        "/index.php?format=feed&type=rss",
+        "/index.php?format=feed&type=atom"
+      ],
+      "home_status": "read",
+      "news_count": 23,
+      "samples": [
+        {
+          "article": "https://www.cw33florida.com.uy/index.php/locales/galeria-portada/38458-hombre-de-31-anos-fue-condenado-por-cuatro-hurtos-en-comercios-de-florida",
+          "mechanisms": [],
+          "checks": []
+        },
+        {
+          "article": "https://www.cw33florida.com.uy/index.php/locales/galeria-portada/38456-junta-departamental-de-florida-impulso-proyecto-de-lectura-que-alcanzara-a-mas-de-1-000-ninos",
+          "mechanisms": [],
+          "checks": []
+        }
+      ]
+    },
+    {
+      "outlet": "LaRed21",
+      "home": "https://www.lr21.com.uy/",
+      "error": "Forbidden"
+    }
+  ]
+}

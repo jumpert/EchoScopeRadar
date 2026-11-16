@@ -26,7 +26,7 @@ async def test_administrative_setup_edit_topic_and_reopen(tmp_path, monkeypatch)
             for job in config.jobs
             if job.id in {"subrayado", "telenoche", "el-observador", "montevideo-portal"}
         )
-        assert len(config.sources) == 12
+        assert len(config.sources) == 16
         form = SourceForm(
             "Video de prueba",
             "Comentarios de un video de YouTube",
@@ -58,7 +58,7 @@ async def test_administrative_setup_edit_topic_and_reopen(tmp_path, monkeypatch)
     service = Administration(path)
     config = await service.open()
     try:
-        assert len(config.sources) == 14
+        assert len(config.sources) == 18
         assert len(config.rule_sets["defensa"]) == 2
         assert config.rule_sets["defensa"][0].aliases == ["ejersito"]
         assert await service.theme() == "dark"

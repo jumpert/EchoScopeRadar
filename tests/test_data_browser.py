@@ -1,5 +1,6 @@
 import csv
 from dataclasses import replace
+from datetime import datetime, timedelta
 from io import BytesIO, StringIO
 
 import pytest
@@ -61,7 +62,11 @@ async def test_account_history_query_pagination_filters_and_exports(tmp_path):
         page = await response.json()
         assert len(page["rows"]) == 50 and page["has_more"]
         query["snapshot"] = page["snapshot"]
-        late = replace(observations[0].message, external_id="after-snapshot", captured_at=utcnow())
+        late = replace(
+            observations[0].message,
+            external_id="after-snapshot",
+            captured_at=datetime.fromisoformat(page["snapshot"]) + timedelta(microseconds=1),
+        )
         await state.service.store.apply(
             snapshot, execution, (Observation(late, observations[0].matches),), True
         )

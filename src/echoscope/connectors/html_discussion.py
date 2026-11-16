@@ -229,7 +229,11 @@ def parse_discussion(html, article, title=None, *, include_comments=True):
             for node in document.elements
             if (
                 node.attrs.get("itemprop") == "articleBody"
-                or node.classes & {"entry-content", "article-body", "post-content"}
+                or node.classes & {"entry-content", "article-body", "post-content",
+                                   "richtextarticlebody"}
+                or (urlsplit(article).hostname == "www.montevideo.com.uy"
+                    and "contenido" in node.classes
+                    and any(parent.tag == "article" for parent in ancestors(node)))
             )
             and not any(
                 is_comment(parent) or discussion_container(parent) for parent in ancestors(node)

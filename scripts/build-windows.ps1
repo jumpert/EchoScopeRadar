@@ -25,4 +25,10 @@ Copy-Item -LiteralPath '.env.example' -Destination $package
 Copy-Item -LiteralPath 'docs/dependency-audit.json' -Destination $package
 Copy-Item -LiteralPath 'docs/fuentes-uruguay-conexiones.md', 'docs/consulta-base-datos.md', 'docs/validacion-comentarios.md', 'deploy/echoscope.service' -Destination $package
 Copy-Item -LiteralPath 'docs/consulta-visual-y-prensa.md' -Destination $package
+Copy-Item -LiteralPath 'docs/prensa-y-segundo-plano.md', 'docs/auditoria-prensa-2026-11-13.json' -Destination $package
+Copy-Item -LiteralPath 'docs/almacenamiento-y-acceso.md' -Destination $package
 Copy-Item -LiteralPath 'docs/assets' -Destination $package -Recurse -Force
+Copy-Item -LiteralPath 'scripts/install-windows-startup.ps1', 'deploy/instalacion.env.example', 'docs/inicio-automatico-y-distribuciones.md' -Destination $package
+[IO.File]::WriteAllText((Join-Path $package 'VERSION.txt'), $version, [Text.UTF8Encoding]::new($false))
+uv run --no-sync python scripts/package-windows.py $package (Join-Path $release "EchoScopeRadar-$version-windows-x86_64.zip")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
