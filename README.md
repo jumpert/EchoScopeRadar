@@ -2,6 +2,8 @@
 
 Centro de monitoreo para comentarios, reseñas, feeds y chats de directos. Cada panel muestra los mensajes recibidos, incluidas las capturas sin coincidencias. Las reglas resaltan términos en el texto original y agrupan sus apariciones por alerta.
 
+![EchoScope Radar: radar que monitorea comentarios, noticias, reseñas y alertas](docs/assets/echoscope-radar-portada-v2.png)
+
 ## Versión 0.15.0 · Inicio automático, Windows y Linux
 
 [Inicio automático, distribuciones y dominio](docs/inicio-automatico-y-distribuciones.md). Los paquetes Windows ZIP y Linux TAR.GZ se generan en `dist/0.15.0/`; incluyen instaladores de inicio y usan configuración persistente `instalacion.env`.
